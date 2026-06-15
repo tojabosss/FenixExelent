@@ -2314,18 +2314,26 @@ function startDashboard() {
     return res.json(gc.warns[userId] || []);
   });
 
-  app.get('/api/stats', (req, res) => {
-    return res.json({
-      guilds: client.guilds.cache.size,
-      users: client.guilds.cache.reduce((a, g) => a + g.memberCount, 0),
-      uptime: Math.floor(process.uptime()),
-      ping: client.ws.ping,
-    });
-  });
+  app.get('/api/stats', async (req, res) => {
+  let users = 0;
+  let bots = 0;
 
-  app.get('/ping', (req, res) => {
-    return res.send('ok');
+  for (const [, guild] of client.guilds.cache) {
+    await guild.members.fetch().catch(() => {});
+
+    users += guild.members.cache.filter(member => !member.user.bot).size;
+    bots += guild.members.cache.filter(member => member.user.bot).size;
+  }
+
+  return res.json({
+    guilds: client.guilds.cache.size,
+    users,
+    bots,
+    total: users + bots,
+    uptime: Math.floor(process.uptime()),
+    ping: client.ws.ping,
   });
+});
 
   app.listen(config.dashboardPort, () => {
     console.log(`\n+------------------------------------------------------+`);
