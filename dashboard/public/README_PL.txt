@@ -1,29 +1,31 @@
-FenixExelent - realne statystyki na stronie
+FenixExelentSecurity - poprawka logo
 
-Co zmieniono:
-- usunięto statyczne wartości typu 1K+, 50K+, <50ms
-- strona pobiera teraz dane z endpointu:
-  /api/stats
-- dane odświeżają się automatycznie co 30 sekund
-- aktualizowane są:
-  serwery
-  użytkownicy
-  ping
+Problem:
+Screen pokazuje stronę główną, a tam logo było w pliku index.html jako:
+Fenix + Exelent bez Security.
 
-Ważne:
-- Podmień plik index.html w folderze publicznym strony.
-- Najczęściej będzie to:
-  dashboard/public/index.html
-  albo public/index.html
+Poprawka:
+- index.html ma już logo: FenixExelentSecurity
+- Security jest niebieskie
+- przygotowany jest też skrypt PowerShell fix_logo_security.ps1
 
-Jeśli w index.js nie masz /api/stats:
-- użyj pliku backend_stats_endpoint_patch.js
-- wklej go wewnątrz funkcji startDashboard()
+Jak użyć:
+1. Najpewniej podmień plik:
+   dashboard/public/index.html
+   na index.html z ZIP-a.
 
-Po podmianie:
-- restart/redeploy na Render
-- w przeglądarce Ctrl + F5
+ALBO:
+1. Wrzuć fix_logo_security.ps1 do głównego folderu projektu.
+2. Uruchom w PowerShell:
+   .\fix_logo_security.ps1
 
-Info techniczne:
-Hero stats patch: 1
-Stats band patch: 1
+Potem:
+git add .
+git commit -m "Add Security to logo"
+git push
+
+Na Render:
+Manual Deploy / Redeploy
+
+Na stronie:
+Ctrl + F5
