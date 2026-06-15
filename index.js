@@ -224,25 +224,51 @@ setInterval(() => {
 //  BOT EVENTS
 // ═══════════════════════════════════════════════════════════════════════════
 
+function updateBotPresence() {
+  if (!client.isReady()) return;
+
+  const guildCount = client.guilds.cache.size;
+
+  client.user.setPresence({
+    activities: [
+      {
+        name: `${guildCount} serwerów | /help`,
+      },
+    ],
+    status: 'online',
+  });
+
+  console.log(`🔄 Status bota zaktualizowany: ${guildCount} serwerów`);
+}
+
 client.once('ready', async () => {
   console.log(`🔥 FenixExelent online jako ${client.user.tag}`);
   console.log(`📊 Serwery: ${client.guilds.cache.size}`);
-  client.user.setPresence({
-    activities: [{ name: `${client.guilds.cache.size} serwerów | help` }],
-    status: 'online',
-  });
+
+  updateBotPresence();
+
+  for (const [, guild] of client.guilds.cache) {
+    await updateStats(guild).catch(() => {});
+  }
+
   startDashboard();
 });
 
-// Aktualizuj status co godzinę
+client.on('guildCreate', async (guild) => {
+  console.log(`✅ Bot dodany na serwer: ${guild.name} (${guild.id})`);
+  updateBotPresence();
+  await updateStats(guild).catch(() => {});
+});
+
+client.on('guildDelete', async (guild) => {
+  console.log(`❌ Bot usunięty z serwera: ${guild.name} (${guild.id})`);
+  updateBotPresence();
+});
+
 setInterval(() => {
-  if (client.isReady()) {
-    client.user.setPresence({
-      activities: [{ name: `${client.guilds.cache.size} serwerów | help` }],
-      status: 'online',
-    });
-  }
-}, 60 * 60 * 1000);
+  updateBotPresence();
+}, 5 * 60 * 1000);
+
 // ─── ANTISCAM ──────────────────────────────────────────────────────────────
 function extractDomains(text) {
   const domainRegex = /(?:https?:\/\/)?(?:www\.)?([a-z0-9-]+\.[a-z]{2,})(?:\/[^\s]*)?/gi;
