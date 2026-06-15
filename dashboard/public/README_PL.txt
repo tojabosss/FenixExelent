@@ -1,31 +1,40 @@
-FenixExelentSecurity - poprawka logo
+FenixExelentSecurity - poprawiony dashboard.html
 
-Problem:
-Screen pokazuje stronę główną, a tam logo było w pliku index.html jako:
-Fenix + Exelent bez Security.
+Co było źle:
+1. Do pliku dashboard.html został wklejony cały skrypt Pythona:
+   from pathlib import Path
+   dashboard_html = r'''...
+   Dlatego ten tekst wyświetlał się w lewym górnym rogu strony.
 
-Poprawka:
-- index.html ma już logo: FenixExelentSecurity
-- Security jest niebieskie
-- przygotowany jest też skrypt PowerShell fix_logo_security.ps1
+2. Do HTML był też doklejony backend_patch.
+   Kod app.get(...) i app.post(...) NIE może być w dashboard.html.
+   Ten kod należy wkleić do index.js wewnątrz function startDashboard().
+
+3. Logo było łamane i miało złe kolory przez CSS:
+   .brand span { color: var(--gold) }
+
+Poprawiono:
+- usunięto cały wrapper Pythona z dashboard.html
+- usunięto backend_patch z dashboard.html
+- dodano osobny plik indexjs-dashboard-backend-patch.js
+- poprawiono logo na jedną linię: FenixExelentSecurity
+- Fenix = biały, Exelent = złoty, Security = niebieski
 
 Jak użyć:
-1. Najpewniej podmień plik:
-   dashboard/public/index.html
-   na index.html z ZIP-a.
+1. Podmień:
+   dashboard/public/dashboard.html
+   na plik dashboard.html z ZIP-a.
 
-ALBO:
-1. Wrzuć fix_logo_security.ps1 do głównego folderu projektu.
-2. Uruchom w PowerShell:
-   .\fix_logo_security.ps1
+2. Pliku indexjs-dashboard-backend-patch.js NIE wrzucaj do public.
+   To tylko instrukcja/patch do index.js.
 
-Potem:
-git add .
-git commit -m "Add Security to logo"
-git push
+3. Potem:
+   git add .
+   git commit -m "Clean dashboard html and fix logo"
+   git push
 
-Na Render:
-Manual Deploy / Redeploy
+4. Na Render:
+   Manual Deploy / Redeploy
 
-Na stronie:
-Ctrl + F5
+5. W przeglądarce:
+   Ctrl + F5

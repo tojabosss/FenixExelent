@@ -1,11 +1,9 @@
-﻿from pathlib import Path
-
-dashboard_html = r'''<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="pl">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>FenixExelent Dashboard</title>
+<title>FenixExelentSecurity Dashboard</title>
 <style>
 :root{
   --bg:#050712;--bg2:#070b18;--side:#090f20;--card:#0d1428;--card2:#111b35;
@@ -34,16 +32,66 @@ a{text-decoration:none;color:inherit}.app{display:grid;grid-template-columns:280
 .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}.toast{position:fixed;right:22px;bottom:22px;background:#052e16;border:1px solid #22c55e;color:#bbf7d0;padding:14px 18px;border-radius:14px;display:none;font-weight:900;z-index:99}
 .notice{background:rgba(245,158,11,.08);border:1px solid var(--line2);border-radius:16px;padding:14px;margin-bottom:16px;color:#fde68a}
 @media(max-width:1050px){.app{grid-template-columns:1fr}.sidebar{height:auto;position:relative}.stats,.grid,.form{grid-template-columns:1fr}.top{flex-direction:column;align-items:flex-start}}
-.security-word{
-  color:#60a5fa;
-  margin-left:4px;
+
+
+/* FenixExelentSecurity logo clean fix */
+.brand{
+  display:flex !important;
+  align-items:center !important;
+  gap:10px !important;
+  font-weight:900 !important;
+  font-size:18px !important;
+  margin-bottom:22px !important;
+  white-space:nowrap !important;
+  overflow:hidden !important;
 }
+.brand span{
+  color:inherit !important;
+}
+.brand-icon{
+  flex:0 0 auto !important;
+  line-height:1 !important;
+}
+.brand-name{
+  display:inline-flex !important;
+  align-items:baseline !important;
+  flex-wrap:nowrap !important;
+  white-space:nowrap !important;
+  min-width:0 !important;
+  line-height:1 !important;
+  letter-spacing:.02em !important;
+}
+.brand-fenix{
+  color:var(--txt) !important;
+}
+.brand-exelent{
+  color:var(--gold) !important;
+  margin-left:2px !important;
+}
+.brand-security{
+  color:var(--blue2) !important;
+  margin-left:4px !important;
+}
+.bannerFallback .brand-fenix{
+  color:var(--txt) !important;
+}
+.bannerFallback .brand-exelent{
+  color:var(--gold) !important;
+}
+.bannerFallback .brand-security{
+  color:var(--blue2) !important;
+  margin-left:4px !important;
+}
+
 </style>
 </head>
 <body>
 <div class="app">
 <aside class="sidebar">
-  <div class="brand">🔥 Fenix<span>Exelent</span><span class="security-word">Security</span></div>
+  <div class="brand">
+  <span class="brand-icon">🔥</span>
+  <span class="brand-name"><span class="brand-fenix">Fenix</span><span class="brand-exelent">Exelent</span><span class="brand-security">Security</span></span>
+</div>
   <a id="loginBtn" href="/login" class="login">Login przez Discord</a>
   <div id="userBox" class="user"></div>
   <div class="navTitle">Serwer</div>
@@ -69,7 +117,7 @@ a{text-decoration:none;color:inherit}.app{display:grid;grid-template-columns:280
 <main class="main">
   <div class="banner">
     <img src="/banner.png" alt="FenixExelent banner" onerror="this.style.display='none';document.getElementById('bannerFallback').style.display='block'">
-    <div id="bannerFallback" class="bannerFallback" style="display:none">Fenix<span>Exelent</span><span class="security-word">Security</span> Dashboard</div>
+    <div id="bannerFallback" class="bannerFallback" style="display:none"><span class="brand-fenix">Fenix</span><span class="brand-exelent">Exelent</span><span class="brand-security">Security</span> Dashboard</div>
   </div>
 
   <section id="overview" class="panel active">
@@ -207,100 +255,4 @@ async function refresh(){await loadConfig();const r=await fetch('/api/stats');if
 loadMe();
 </script>
 </body>
-</html>'''
-
-backend_patch = r'''// WKLEJ W index.js WEWNĄTRZ function startDashboard()
-// 1) Dodaj ten endpoint przed app.get('/api/config/:guildId', ...)
-
-app.get('/api/guild/:guildId/meta', requireAuth, async (req, res) => {
-  const { guildId } = req.params;
-  if (!hasAdminOnGuild(req, guildId)) return res.status(403).json({ error: 'Brak uprawnień' });
-
-  const guild = client.guilds.cache.get(guildId);
-  if (!guild) return res.status(404).json({ error: 'Bot nie jest na tym serwerze' });
-
-  await guild.channels.fetch().catch(() => {});
-  await guild.roles.fetch().catch(() => {});
-
-  const channels = guild.channels.cache
-    .filter(ch => ch.type === ChannelType.GuildText)
-    .map(ch => ({ id: ch.id, name: ch.name }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-
-  const roles = guild.roles.cache
-    .filter(r => !r.managed && r.id !== guild.roles.everyone.id)
-    .map(r => ({ id: r.id, name: r.name }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-
-  res.json({ channels, roles });
-});
-
-// 2) ZAMIEŃ cały stary app.post('/api/config/:guildId'...) na ten:
-
-app.post('/api/config/:guildId', requireAuth, async (req, res) => {
-  const { guildId } = req.params;
-  if (!hasAdminOnGuild(req, guildId)) return res.status(403).json({ error: 'Brak uprawnień' });
-
-  const guild = client.guilds.cache.get(guildId);
-  if (!guild) return res.status(404).json({ error: 'Bot nie jest na tym serwerze' });
-
-  const gc = getGuildConfig(guildId);
-  const allowed = ['antispam', 'antiraid', 'channelGuard', 'verification', 'tickets', 'modLog'];
-
-  for (const key of allowed) {
-    if (req.body[key]) Object.assign(gc[key], req.body[key]);
-  }
-
-  const actions = req.body.actions || {};
-
-  if (req.body.antiraid?.lockdownActive !== undefined) {
-    for (const [, ch] of guild.channels.cache) {
-      if (ch.type === ChannelType.GuildText) {
-        await ch.permissionOverwrites.edit(guild.roles.everyone, {
-          SendMessages: req.body.antiraid.lockdownActive ? false : null,
-        }).catch(() => {});
-      }
-    }
-  }
-
-  if (actions.sendVerificationPanel) {
-    const channelId = gc.verification.channelId;
-    const ch = channelId ? await guild.channels.fetch(channelId).catch(() => null) : null;
-    if (ch) await sendVerifyPanel(ch).catch(console.error);
-  }
-
-  if (actions.sendTicketPanel) {
-    const channelId = gc.tickets.panelChannelId || gc.tickets.logChannelId;
-    const ch = channelId ? await guild.channels.fetch(channelId).catch(() => null) : null;
-    if (ch) await sendTicketPanel(ch).catch(console.error);
-  }
-
-  saveConfig();
-
-  const logChannelId = gc.modLog?.channelId || gc.antiraid?.logChannel || gc.antispam?.logChannel || gc.channelGuard?.logChannel;
-  if (logChannelId) {
-    const logCh = await guild.channels.fetch(logChannelId).catch(() => null);
-    if (logCh) {
-      await logCh.send({
-        embeds: [embed(
-          '#2ed573',
-          '⚙️ Dashboard zaktualizowany',
-          'Ustawienia serwera zostały zmienione przez panel WWW.',
-          [
-            { name: 'AntiSpam', value: gc.antispam.enabled ? '✅ Włączony' : '❌ Wyłączony', inline: true },
-            { name: 'AntiRaid', value: gc.antiraid.enabled ? '✅ Włączony' : '❌ Wyłączony', inline: true },
-            { name: 'Channel Guard', value: gc.channelGuard.blockNewChannels ? '✅ Aktywny' : '❌ Wyłączony', inline: true },
-          ]
-        )]
-      }).catch(() => {});
-    }
-  }
-
-  res.json({ success: true, config: gc });
-});'''
-
-Path('/mnt/data/dashboard-probot-mee6.html').write_text(dashboard_html, encoding='utf-8')
-Path('/mnt/data/indexjs-dashboard-backend-patch.js').write_text(backend_patch, encoding='utf-8')
-print('/mnt/data/dashboard-probot-mee6.html')
-print('/mnt/data/indexjs-dashboard-backend-patch.js')
-
+</html>
