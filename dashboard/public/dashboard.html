@@ -1,4 +1,4 @@
-from pathlib import Path
+﻿from pathlib import Path
 
 dashboard_html = r'''<!DOCTYPE html>
 <html lang="pl">
@@ -34,12 +34,16 @@ a{text-decoration:none;color:inherit}.app{display:grid;grid-template-columns:280
 .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}.toast{position:fixed;right:22px;bottom:22px;background:#052e16;border:1px solid #22c55e;color:#bbf7d0;padding:14px 18px;border-radius:14px;display:none;font-weight:900;z-index:99}
 .notice{background:rgba(245,158,11,.08);border:1px solid var(--line2);border-radius:16px;padding:14px;margin-bottom:16px;color:#fde68a}
 @media(max-width:1050px){.app{grid-template-columns:1fr}.sidebar{height:auto;position:relative}.stats,.grid,.form{grid-template-columns:1fr}.top{flex-direction:column;align-items:flex-start}}
+.security-word{
+  color:#60a5fa;
+  margin-left:4px;
+}
 </style>
 </head>
 <body>
 <div class="app">
 <aside class="sidebar">
-  <div class="brand">🔥 Fenix<span>Exelent</span></div>
+  <div class="brand">🔥 Fenix<span>Exelent</span><span class="security-word">Security</span></div>
   <a id="loginBtn" href="/login" class="login">Login przez Discord</a>
   <div id="userBox" class="user"></div>
   <div class="navTitle">Serwer</div>
@@ -65,7 +69,7 @@ a{text-decoration:none;color:inherit}.app{display:grid;grid-template-columns:280
 <main class="main">
   <div class="banner">
     <img src="/banner.png" alt="FenixExelent banner" onerror="this.style.display='none';document.getElementById('bannerFallback').style.display='block'">
-    <div id="bannerFallback" class="bannerFallback" style="display:none">Fenix<span>Exelent</span> Dashboard</div>
+    <div id="bannerFallback" class="bannerFallback" style="display:none">Fenix<span>Exelent</span><span class="security-word">Security</span> Dashboard</div>
   </div>
 
   <section id="overview" class="panel active">
@@ -299,3 +303,4 @@ Path('/mnt/data/dashboard-probot-mee6.html').write_text(dashboard_html, encoding
 Path('/mnt/data/indexjs-dashboard-backend-patch.js').write_text(backend_patch, encoding='utf-8')
 print('/mnt/data/dashboard-probot-mee6.html')
 print('/mnt/data/indexjs-dashboard-backend-patch.js')
+
