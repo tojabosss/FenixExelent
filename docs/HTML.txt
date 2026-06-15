@@ -1,0 +1,1200 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FenixExelent – Ochrona Serwera Discord</title>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-deep: #04060f;
+    --bg-card: #080d1a;
+    --bg-card2: #0b1225;
+    --blue-core: #2563EB;
+    --blue-glow: #3b82f6;
+    --blue-light: #60a5fa;
+    --gold: #F59E0B;
+    --gold-light: #FCD34D;
+    --text-primary: #f0f4ff;
+    --text-secondary: #8b9dbf;
+    --text-muted: #4a5878;
+    --border: rgba(37,99,235,0.18);
+    --border-gold: rgba(245,158,11,0.25);
+    --font-display: 'Rajdhani', sans-serif;
+    --font-body: 'Inter', sans-serif;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg-deep);
+    color: var(--text-primary);
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.6;
+    overflow-x: hidden;
+  }
+
+  /* ── LANGUAGE BAR ── */
+  .lang-bar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 1000;
+    background: rgba(4,6,15,0.9);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 2.5rem;
+    height: 64px;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    text-decoration: none;
+  }
+
+  .logo-icon {
+    width: 38px; height: 38px;
+    position: relative;
+  }
+
+  .logo-icon svg { width:100%; height:100%; }
+
+  .logo-text {
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+  }
+  .logo-text span:first-child { color: var(--text-primary); }
+  .logo-text span:last-child { color: var(--gold); }
+
+  nav { display: flex; align-items: center; gap: 2rem; }
+  nav a {
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-size: 0.85rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    transition: color .2s;
+  }
+  nav a:hover { color: var(--text-primary); }
+
+  .nav-right { display: flex; align-items: center; gap: 1rem; }
+
+  .lang-switcher {
+    display: flex;
+    gap: 6px;
+  }
+  .lang-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-family: var(--font-body);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all .2s;
+    text-transform: uppercase;
+  }
+  .lang-btn.active, .lang-btn:hover {
+    background: rgba(37,99,235,0.15);
+    border-color: var(--blue-core);
+    color: var(--blue-light);
+  }
+
+  .btn-add {
+    background: linear-gradient(135deg, var(--blue-core), #1d4ed8);
+    color: #fff;
+    font-family: var(--font-display);
+    font-size: 0.9rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 9px 24px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: all .25s;
+    box-shadow: 0 0 20px rgba(37,99,235,0.3);
+  }
+  .btn-add:hover {
+    box-shadow: 0 0 35px rgba(37,99,235,0.55);
+    transform: translateY(-1px);
+  }
+
+  /* ── HERO ── */
+  .hero {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+    padding: 100px 2.5rem 4rem;
+  }
+
+  #heroCanvas {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.65;
+  }
+
+  .hero-grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(37,99,235,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(37,99,235,0.04) 1px, transparent 1px);
+    background-size: 60px 60px;
+    pointer-events: none;
+  }
+
+  .hero-inner {
+    position: relative;
+    z-index: 2;
+    max-width: 1200px;
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4rem;
+    align-items: center;
+  }
+
+  .hero-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(245,158,11,0.08);
+    border: 1px solid var(--border-gold);
+    border-radius: 100px;
+    padding: 5px 14px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: 1.5rem;
+  }
+  .hero-eyebrow::before {
+    content: '';
+    width: 6px; height: 6px;
+    background: var(--gold);
+    border-radius: 50%;
+    animation: pulse-dot 2s infinite;
+  }
+
+  @keyframes pulse-dot {
+    0%,100% { opacity:1; transform:scale(1); }
+    50% { opacity:0.5; transform:scale(1.4); }
+  }
+
+  .hero-title {
+    font-family: var(--font-display);
+    font-size: clamp(3rem, 5.5vw, 5.5rem);
+    font-weight: 700;
+    line-height: 0.95;
+    letter-spacing: -0.01em;
+    margin-bottom: 0.3em;
+  }
+  .hero-title .line-fenix { color: var(--text-primary); }
+  .hero-title .line-exelent {
+    color: transparent;
+    -webkit-text-stroke: 2px var(--blue-glow);
+    filter: drop-shadow(0 0 18px rgba(59,130,246,0.5));
+  }
+
+  .hero-desc {
+    color: var(--text-secondary);
+    font-size: 1.05rem;
+    line-height: 1.7;
+    max-width: 480px;
+    margin-bottom: 2.5rem;
+  }
+
+  .hero-cta { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; margin-bottom: 3rem; }
+
+  .btn-primary {
+    background: linear-gradient(135deg, var(--blue-core), #1d4ed8);
+    color: #fff;
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 14px 32px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    transition: all .25s;
+    box-shadow: 0 0 30px rgba(37,99,235,0.4);
+  }
+  .btn-primary:hover {
+    box-shadow: 0 0 50px rgba(37,99,235,0.65);
+    transform: translateY(-2px);
+  }
+
+  .btn-secondary {
+    background: transparent;
+    color: var(--text-secondary);
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 14px 28px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: all .25s;
+  }
+  .btn-secondary:hover {
+    border-color: var(--blue-core);
+    color: var(--text-primary);
+    background: rgba(37,99,235,0.06);
+  }
+
+  .hero-stats {
+    display: flex;
+    gap: 2.5rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--border);
+  }
+  .stat-val {
+    font-family: var(--font-display);
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.02em;
+  }
+  .stat-val span { color: var(--gold); }
+  .stat-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  /* phoenix emblem */
+  .hero-emblem {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .emblem-ring {
+    position: relative;
+    width: 380px; height: 380px;
+  }
+  .emblem-ring svg { width:100%; height:100%; }
+  .ring-spin {
+    animation: spin-slow 18s linear infinite;
+    transform-origin: center;
+  }
+  .ring-spin-rev {
+    animation: spin-slow 24s linear infinite reverse;
+    transform-origin: center;
+  }
+  @keyframes spin-slow { to { transform: rotate(360deg); } }
+
+  .emblem-center {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .emblem-shield {
+    width: 160px; height: 160px;
+    filter: drop-shadow(0 0 40px rgba(37,99,235,0.6));
+    animation: float 4s ease-in-out infinite;
+  }
+  @keyframes float {
+    0%,100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+  }
+
+  /* ── SECTION SHARED ── */
+  section { padding: 6rem 2.5rem; }
+  .section-inner { max-width: 1200px; margin: 0 auto; }
+
+  .section-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--blue-light);
+    margin-bottom: 0.6rem;
+  }
+  .section-title {
+    font-family: var(--font-display);
+    font-size: clamp(2rem, 3.5vw, 3rem);
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    margin-bottom: 1rem;
+    line-height: 1.1;
+  }
+  .section-sub {
+    color: var(--text-secondary);
+    max-width: 560px;
+    font-size: 0.95rem;
+  }
+
+  /* ── FEATURES ── */
+  .features-bg {
+    background: linear-gradient(180deg, var(--bg-deep) 0%, #060b18 100%);
+  }
+
+  .features-header { margin-bottom: 3.5rem; }
+
+  .features-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.5px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .feat-card {
+    background: var(--bg-card);
+    padding: 2.2rem;
+    position: relative;
+    overflow: hidden;
+    transition: background .3s;
+  }
+  .feat-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--blue-core), transparent);
+    opacity: 0;
+    transition: opacity .3s;
+  }
+  .feat-card:hover { background: var(--bg-card2); }
+  .feat-card:hover::before { opacity: 1; }
+
+  .feat-icon {
+    width: 48px; height: 48px;
+    background: rgba(37,99,235,0.1);
+    border: 1px solid rgba(37,99,235,0.2);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.4rem;
+    margin-bottom: 1.2rem;
+    transition: all .3s;
+  }
+  .feat-card:hover .feat-icon {
+    background: rgba(37,99,235,0.2);
+    border-color: var(--blue-core);
+    box-shadow: 0 0 20px rgba(37,99,235,0.25);
+  }
+
+  .feat-name {
+    font-family: var(--font-display);
+    font-size: 1.15rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    margin-bottom: 0.7rem;
+    color: var(--text-primary);
+  }
+  .feat-desc {
+    color: var(--text-secondary);
+    font-size: 0.88rem;
+    line-height: 1.65;
+  }
+
+  /* ── THREAT DETECTION ── */
+  .threats-bg { background: var(--bg-card); }
+
+  .threats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-top: 3rem;
+  }
+  .threat-tag {
+    background: var(--bg-card2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem 1.4rem;
+    font-family: var(--font-display);
+    font-size: 0.9rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: all .25s;
+    cursor: default;
+  }
+  .threat-tag:hover {
+    background: rgba(37,99,235,0.06);
+    border-color: var(--blue-core);
+    color: var(--text-primary);
+    transform: translateX(4px);
+  }
+  .threat-dot {
+    width: 7px; height: 7px;
+    background: var(--blue-glow);
+    border-radius: 50%;
+    flex-shrink: 0;
+    box-shadow: 0 0 8px var(--blue-glow);
+  }
+
+  /* ── STATS BAND ── */
+  .stats-band {
+    padding: 4rem 2.5rem;
+    background: linear-gradient(135deg, rgba(37,99,235,0.06) 0%, rgba(245,158,11,0.04) 100%);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  .stats-band .section-inner {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 2rem;
+    text-align: center;
+  }
+  .band-val {
+    font-family: var(--font-display);
+    font-size: 3rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--text-primary), var(--blue-light));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    line-height: 1;
+    margin-bottom: 0.4rem;
+  }
+  .band-label {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--text-muted);
+  }
+
+  /* ── WHY ── */
+  .why-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4rem;
+    align-items: center;
+  }
+  .why-list { margin-top: 2.5rem; display: flex; flex-direction: column; gap: 1rem; }
+  .why-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    padding: 1rem 1.2rem;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    transition: all .25s;
+  }
+  .why-item:hover {
+    background: rgba(37,99,235,0.04);
+    border-color: var(--border);
+  }
+  .why-check {
+    width: 22px; height: 22px;
+    background: rgba(37,99,235,0.12);
+    border: 1px solid rgba(37,99,235,0.3);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 1px;
+    font-size: 0.75rem;
+    color: var(--blue-light);
+  }
+  .why-text strong {
+    display: block;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 2px;
+  }
+  .why-text span {
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+  }
+
+  .why-visual {
+    position: relative;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 2.5rem;
+    overflow: hidden;
+  }
+  .why-visual::before {
+    content: '';
+    position: absolute;
+    top: -80px; right: -80px;
+    width: 250px; height: 250px;
+    background: radial-gradient(circle, rgba(37,99,235,0.12), transparent 70%);
+    pointer-events: none;
+  }
+  .code-block {
+    font-family: 'Courier New', monospace;
+    font-size: 0.8rem;
+    line-height: 1.9;
+    color: var(--text-secondary);
+  }
+  .code-block .c-kw { color: #60a5fa; }
+  .code-block .c-fn { color: #a78bfa; }
+  .code-block .c-str { color: #34d399; }
+  .code-block .c-cm { color: #4a5878; }
+  .code-block .c-gold { color: var(--gold); }
+  .code-title {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--text-muted);
+    margin-bottom: 1.2rem;
+    display: flex; gap: 8px; align-items: center;
+  }
+  .code-dot { width:10px; height:10px; border-radius:50%; }
+
+  /* ── CTA ── */
+  .cta-section {
+    padding: 7rem 2.5rem;
+    background: var(--bg-deep);
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .cta-section::before {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%,-50%);
+    width: 700px; height: 400px;
+    background: radial-gradient(ellipse, rgba(37,99,235,0.08) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .cta-title {
+    font-family: var(--font-display);
+    font-size: clamp(2.5rem, 4vw, 4rem);
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    margin-bottom: 1rem;
+  }
+  .cta-title span { color: var(--gold); }
+  .cta-desc {
+    color: var(--text-secondary);
+    max-width: 500px;
+    margin: 0 auto 2.5rem;
+    font-size: 1rem;
+  }
+  .cta-badges {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: 2.5rem;
+  }
+  .badge {
+    background: rgba(37,99,235,0.08);
+    border: 1px solid var(--border);
+    border-radius: 100px;
+    padding: 6px 16px;
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    letter-spacing: 0.05em;
+  }
+  .badge span { color: var(--blue-light); }
+
+  /* ── FOOTER ── */
+  footer {
+    background: var(--bg-card);
+    border-top: 1px solid var(--border);
+    padding: 2.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  footer p {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+  }
+  .footer-links { display: flex; gap: 1.5rem; }
+  .footer-links a {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    text-decoration: none;
+    transition: color .2s;
+  }
+  .footer-links a:hover { color: var(--text-secondary); }
+
+  /* ── SCROLL REVEAL ── */
+  .reveal { opacity: 0; transform: translateY(28px); transition: opacity .6s ease, transform .6s ease; }
+  .reveal.visible { opacity: 1; transform: none; }
+
+  @media (max-width: 900px) {
+    .hero-inner { grid-template-columns: 1fr; }
+    .hero-emblem { display: none; }
+    .features-grid { grid-template-columns: 1fr; }
+    .threats-grid { grid-template-columns: 1fr 1fr; }
+    .stats-band .section-inner { grid-template-columns: 1fr 1fr; }
+    .why-grid { grid-template-columns: 1fr; }
+    nav { display: none; }
+  }
+
+  @media (max-width: 560px) {
+    .threats-grid { grid-template-columns: 1fr; }
+    .stats-band .section-inner { grid-template-columns: 1fr 1fr; }
+    .lang-bar { padding: 0 1.2rem; }
+    section { padding: 4rem 1.2rem; }
+  }
+</style>
+</head>
+<body>
+
+<!-- LANG BAR / NAV -->
+<header class="lang-bar">
+  <a href="#" class="logo">
+    <div class="logo-icon">
+      <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M20 3L35 11V22C35 29.5 28.5 35.8 20 38C11.5 35.8 5 29.5 5 22V11L20 3Z" fill="rgba(37,99,235,0.15)" stroke="#3b82f6" stroke-width="1.5"/>
+        <path d="M20 8L30 14V22C30 27.5 25.5 32 20 33.8C14.5 32 10 27.5 10 22V14L20 8Z" fill="rgba(37,99,235,0.2)"/>
+        <path d="M17 18L20 14L23 18L20 26L17 18Z" fill="#60a5fa"/>
+        <path d="M20 14L24 20L20 26L16 20L20 14Z" fill="#3b82f6" opacity="0.7"/>
+      </svg>
+    </div>
+    <span class="logo-text"><span>Fenix</span><span>Exelent</span></span>
+  </a>
+
+  <nav>
+    <a href="#features" data-i18n="nav_features">Funkcje</a>
+    <a href="#protection" data-i18n="nav_protection">Ochrona</a>
+    <a href="#why" data-i18n="nav_why">Dlaczego My</a>
+    <a href="#start" data-i18n="nav_start">Zacznij</a>
+  </nav>
+
+  <div class="nav-right">
+    <div class="lang-switcher">
+      <button class="lang-btn active" onclick="setLang('pl')">PL</button>
+      <button class="lang-btn" onclick="setLang('en')">EN</button>
+      <button class="lang-btn" onclick="setLang('de')">DE</button>
+      <button class="lang-btn" onclick="setLang('fr')">FR</button>
+    </div>
+    <a href="#start" class="btn-add">
+      <svg width="14" height="14" fill="currentColor" viewBox="0 0 20 20"><path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"/></svg>
+      <span data-i18n="nav_add">Dodaj Bota</span>
+    </a>
+  </div>
+</header>
+
+<!-- HERO -->
+<section class="hero">
+  <canvas id="heroCanvas"></canvas>
+  <div class="hero-grid"></div>
+  <div class="hero-inner">
+    <div class="hero-content">
+      <div class="hero-eyebrow" data-i18n="hero_badge">Ochrona Nowej Generacji</div>
+      <h1 class="hero-title">
+        <div class="line-fenix">FENIX</div>
+        <div class="line-exelent">EXELENT</div>
+      </h1>
+      <p class="hero-desc" data-i18n="hero_desc">Kompleksowa ochrona Twojego serwera Discord. Blokuj raiderów, nukerów i nadużycia — automatycznie, bez przerwy, bez kompromisów.</p>
+      <div class="hero-cta">
+        <a href="#" class="btn-primary">
+          <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20"><path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"/></svg>
+          <span data-i18n="hero_cta">Dodaj do Serwera</span>
+        </a>
+        <a href="#features" class="btn-secondary" data-i18n="hero_cta2">Zobacz Funkcje</a>
+      </div>
+      <div class="hero-stats">
+        <div class="stat-item">
+          <div class="stat-val">1<span>K+</span></div>
+          <div class="stat-label" data-i18n="stat1">Serwerów</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-val">50<span>K+</span></div>
+          <div class="stat-label" data-i18n="stat2">Użytkowników</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-val">&lt;50<span>ms</span></div>
+          <div class="stat-label" data-i18n="stat3">Średni Ping</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="hero-emblem">
+      <div class="emblem-ring">
+        <svg viewBox="0 0 380 380" xmlns="http://www.w3.org/2000/svg">
+          <!-- outer ring spinning -->
+          <g class="ring-spin">
+            <circle cx="190" cy="190" r="178" fill="none" stroke="rgba(37,99,235,0.12)" stroke-width="1"/>
+            <circle cx="190" cy="190" r="178" fill="none" stroke="url(#gradRing)" stroke-width="1.5" stroke-dasharray="20 40" stroke-linecap="round"/>
+          </g>
+          <!-- middle ring reverse -->
+          <g class="ring-spin-rev">
+            <circle cx="190" cy="190" r="148" fill="none" stroke="rgba(37,99,235,0.08)" stroke-width="1"/>
+            <circle cx="190" cy="190" r="148" fill="none" stroke="url(#gradRing2)" stroke-width="1" stroke-dasharray="5 25" stroke-linecap="round"/>
+          </g>
+          <!-- inner decorative -->
+          <circle cx="190" cy="190" r="110" fill="none" stroke="rgba(37,99,235,0.06)" stroke-width="1"/>
+          <!-- tick marks -->
+          <g stroke="rgba(37,99,235,0.25)" stroke-width="1">
+            <line x1="190" y1="12" x2="190" y2="26"/>
+            <line x1="190" y1="354" x2="190" y2="368"/>
+            <line x1="12" y1="190" x2="26" y2="190"/>
+            <line x1="354" y1="190" x2="368" y2="190"/>
+          </g>
+          <defs>
+            <linearGradient id="gradRing" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#3b82f6" stop-opacity="0"/>
+              <stop offset="50%" stop-color="#3b82f6"/>
+              <stop offset="100%" stop-color="#3b82f6" stop-opacity="0"/>
+            </linearGradient>
+            <linearGradient id="gradRing2" x1="0%" y1="100%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#F59E0B" stop-opacity="0"/>
+              <stop offset="50%" stop-color="#F59E0B"/>
+              <stop offset="100%" stop-color="#F59E0B" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+        </svg>
+        <div class="emblem-center">
+          <svg class="emblem-shield" viewBox="0 0 160 160" xmlns="http://www.w3.org/2000/svg">
+            <!-- glow bg -->
+            <circle cx="80" cy="80" r="70" fill="rgba(37,99,235,0.06)"/>
+            <!-- shield -->
+            <path d="M80 15L138 42V85C138 116 113 138 80 148C47 138 22 116 22 85V42L80 15Z"
+              fill="rgba(37,99,235,0.1)" stroke="#3b82f6" stroke-width="1.5"/>
+            <!-- inner shield -->
+            <path d="M80 28L122 50V85C122 110 103 128 80 136C57 128 38 110 38 85V50L80 28Z"
+              fill="rgba(37,99,235,0.15)"/>
+            <!-- fenix/flame shape -->
+            <path d="M80 55 L88 72 L96 65 L90 80 L100 75 L80 105 L60 75 L70 80 L64 65 L72 72 Z"
+              fill="url(#flameGrad)" stroke="rgba(37,99,235,0.4)" stroke-width="0.5"/>
+            <defs>
+              <linearGradient id="flameGrad" x1="80" y1="55" x2="80" y2="105" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#FCD34D"/>
+                <stop offset="50%" stop-color="#F59E0B"/>
+                <stop offset="100%" stop-color="#3b82f6"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section class="features-bg" id="features">
+  <div class="section-inner">
+    <div class="features-header reveal">
+      <div class="section-label" data-i18n="feat_label">Funkcje</div>
+      <h2 class="section-title" data-i18n="feat_title">Kompletny Arsenał Ochrony</h2>
+      <p class="section-sub" data-i18n="feat_sub">Wszystko, czego potrzebuje Twój serwer — w jednym bocie.</p>
+    </div>
+    <div class="features-grid reveal">
+      <div class="feat-card">
+        <div class="feat-icon">🛡️</div>
+        <div class="feat-name" data-i18n="f1_name">AntiSpam</div>
+        <div class="feat-desc" data-i18n="f1_desc">Automatyczne wykrywanie spamu, floodu i nadużyć. Bot natychmiast wycisza sprawców i zapisuje pełne logi incydentów do późniejszego przeglądu.</div>
+      </div>
+      <div class="feat-card">
+        <div class="feat-icon">🚨</div>
+        <div class="feat-name" data-i18n="f2_name">AntiRaid</div>
+        <div class="feat-desc" data-i18n="f2_desc">Ochrona przed masowymi dołączeniami i skoordynowanymi atakami. Automatyczne kicki, bany lub timeouty — konfigurowalne do Twoich potrzeb.</div>
+      </div>
+      <div class="feat-card">
+        <div class="feat-icon">🔒</div>
+        <div class="feat-name" data-i18n="f3_name">Channel Guard</div>
+        <div class="feat-desc" data-i18n="f3_desc">Blokada nieautoryzowanego tworzenia i usuwania kanałów. Podejrzane zmiany cofane są automatycznie, zanim zdążą wyrządzić szkody.</div>
+      </div>
+      <div class="feat-card">
+        <div class="feat-icon">✅</div>
+        <div class="feat-name" data-i18n="f4_name">Weryfikacja</div>
+        <div class="feat-desc" data-i18n="f4_desc">Nowoczesny system weryfikacji oparty na przyciskach Discord. Eliminuje boty i konta tymczasowe, zanim dostaną się na serwer.</div>
+      </div>
+      <div class="feat-card">
+        <div class="feat-icon">🎫</div>
+        <div class="feat-name" data-i18n="f5_name">System Ticketów</div>
+        <div class="feat-desc" data-i18n="f5_desc">Profesjonalny support z automatycznym tworzeniem prywatnych kanałów pomocy. Transkrypcje, priorytety i przypisanie moderatorów.</div>
+      </div>
+      <div class="feat-card">
+        <div class="feat-icon">📊</div>
+        <div class="feat-name" data-i18n="f6_name">Dashboard WWW</div>
+        <div class="feat-desc" data-i18n="f6_desc">Zarządzaj wszystkimi ustawieniami przez intuicyjny panel webowy. Logi, statystyki i konfiguracja — w jednym miejscu, z każdego urządzenia.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- THREAT DETECTION -->
+<section class="threats-bg" id="protection">
+  <div class="section-inner">
+    <div class="reveal">
+      <div class="section-label" data-i18n="thr_label">Inteligentne wykrywanie</div>
+      <h2 class="section-title" data-i18n="thr_title">Zagrożenia, Które Blokujemy</h2>
+      <p class="section-sub" data-i18n="thr_sub">FenixExelent monitoruje każde działanie na serwerze i reaguje błyskawicznie, zanim pojawi się szkoda.</p>
+    </div>
+    <div class="threats-grid reveal">
+      <div class="threat-tag"><div class="threat-dot"></div><span data-i18n="t1">Dodawanie Botów</span></div>
+      <div class="threat-tag"><div class="threat-dot"></div><span data-i18n="t2">Banowanie Członków</span></div>
+      <div class="threat-tag"><div class="threat-dot"></div><span data-i18n="t3">Kickowanie Członków</span></div>
+      <div class="threat-tag"><div class="threat-dot"></div><span data-i18n="t4">Tworzenie Kanałów</span></div>
+      <div class="threat-tag"><div class="threat-dot"></div><span data-i18n="t5">Usuwanie Kanałów</span></div>
+      <div class="threat-tag"><div class="threat-dot"></div><span data-i18n="t6">Tworzenie Ról</span></div>
+      <div class="threat-tag"><div class="threat-dot"></div><span data-i18n="t7">Usuwanie Ról</span></div>
+      <div class="threat-tag"><div class="threat-dot"></div><span data-i18n="t8">Niebezpieczne Uprawnienia</span></div>
+      <div class="threat-tag"><div class="threat-dot"></div><span data-i18n="t9">Nadawanie Niebezpiecznych Ról</span></div>
+      <div class="threat-tag"><div class="threat-dot"></div><span data-i18n="t10">Zmiana Vanity URL</span></div>
+      <div class="threat-tag"><div class="threat-dot"></div><span data-i18n="t11">Tworzenie Webhooków</span></div>
+      <div class="threat-tag"><div class="threat-dot"></div><span data-i18n="t12">Ping @everyone i @here</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- STATS BAND -->
+<div class="stats-band">
+  <div class="section-inner">
+    <div class="band-stat reveal">
+      <div class="band-val">1K+</div>
+      <div class="band-label" data-i18n="band1">Serwery Chronione</div>
+    </div>
+    <div class="band-stat reveal">
+      <div class="band-val">50K+</div>
+      <div class="band-label" data-i18n="band2">Użytkownicy Pod Ochroną</div>
+    </div>
+    <div class="band-stat reveal">
+      <div class="band-val">&lt;50ms</div>
+      <div class="band-label" data-i18n="band3">Średni Ping</div>
+    </div>
+    <div class="band-stat reveal">
+      <div class="band-val">24/7</div>
+      <div class="band-label" data-i18n="band4">Aktywna Ochrona</div>
+    </div>
+  </div>
+</div>
+
+<!-- WHY -->
+<section id="why">
+  <div class="section-inner">
+    <div class="why-grid">
+      <div>
+        <div class="reveal">
+          <div class="section-label" data-i18n="why_label">Przewaga</div>
+          <h2 class="section-title" data-i18n="why_title">Dlaczego FenixExelent?</h2>
+          <p class="section-sub" data-i18n="why_sub">Zaprojektowany przez moderatorów, dla moderatorów. Zero kompromisów w bezpieczeństwie.</p>
+        </div>
+        <div class="why-list reveal">
+          <div class="why-item"><div class="why-check">✓</div><div class="why-text"><strong data-i18n="w1t">Nowoczesny Dashboard</strong><span data-i18n="w1d">Panel WWW z pełną kontrolą ustawień</span></div></div>
+          <div class="why-item"><div class="why-check">✓</div><div class="why-text"><strong data-i18n="w2t">Zaawansowana Moderacja</strong><span data-i18n="w2d">Pełna automatyzacja bez potrzeby ręcznej interwencji</span></div></div>
+          <div class="why-item"><div class="why-check">✓</div><div class="why-text"><strong data-i18n="w3t">Automatyczna Ochrona</strong><span data-i18n="w3d">Reaguje w ułamku sekundy od wykrycia zagrożenia</span></div></div>
+          <div class="why-item"><div class="why-check">✓</div><div class="why-text"><strong data-i18n="w4t">Łatwa Konfiguracja</strong><span data-i18n="w4d">Gotowy do działania w mniej niż 5 minut</span></div></div>
+          <div class="why-item"><div class="why-check">✓</div><div class="why-text"><strong data-i18n="w5t">Wysoka Wydajność</strong><span data-i18n="w5d">Ping poniżej 50ms, dostępność 99.9%</span></div></div>
+          <div class="why-item"><div class="why-check">✓</div><div class="why-text"><strong data-i18n="w6t">Darmowy Dostęp</strong><span data-i18n="w6d">Pełna ochrona bez żadnych ukrytych kosztów</span></div></div>
+        </div>
+      </div>
+      <div class="why-visual reveal">
+        <div class="code-title">
+          <div class="code-dot" style="background:#ef4444"></div>
+          <div class="code-dot" style="background:#f59e0b"></div>
+          <div class="code-dot" style="background:#22c55e"></div>
+          &nbsp; fenix.config.js
+        </div>
+        <div class="code-block">
+<span class="c-cm">// FenixExelent Configuration</span><br>
+<span class="c-kw">const</span> config = {<br>
+&nbsp;&nbsp;<span class="c-fn">antiSpam</span>: {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;enabled: <span class="c-gold">true</span>,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;maxMessages: <span class="c-str">5</span>,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;interval: <span class="c-str">3000</span><br>
+&nbsp;&nbsp;},<br>
+&nbsp;&nbsp;<span class="c-fn">antiRaid</span>: {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;enabled: <span class="c-gold">true</span>,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;joinThreshold: <span class="c-str">10</span>,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;action: <span class="c-str">"timeout"</span><br>
+&nbsp;&nbsp;},<br>
+&nbsp;&nbsp;<span class="c-fn">antiNuke</span>: {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;enabled: <span class="c-gold">true</span>,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;protectedRoles: [<span class="c-str">"Admin"</span>],<br>
+&nbsp;&nbsp;&nbsp;&nbsp;autoRestore: <span class="c-gold">true</span><br>
+&nbsp;&nbsp;},<br>
+&nbsp;&nbsp;<span class="c-fn">verification</span>: <span class="c-gold">true</span><br>
+};<br><br>
+<span class="c-cm">// ✅ Ochrona aktywna 24/7</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section" id="start">
+  <div class="section-inner" style="max-width:700px">
+    <div class="reveal">
+      <h2 class="cta-title" data-i18n="cta_title">Dołącz <span>Dziś</span></h2>
+      <p class="cta-desc" data-i18n="cta_desc">Dodaj FenixExelent na swój serwer i zapewnij społeczności najwyższy poziom bezpieczeństwa. Za darmo, zawsze.</p>
+      <a href="#" class="btn-primary" style="font-size:1.1rem; padding:16px 40px; margin: 0 auto; display:inline-flex;">
+        <svg width="18" height="18" fill="currentColor" viewBox="0 0 20 20"><path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"/></svg>
+        <span data-i18n="cta_btn">Dodaj FenixExelent</span>
+      </a>
+      <div class="cta-badges">
+        <div class="badge"><span>✓</span> <span data-i18n="b1">Darmowy</span></div>
+        <div class="badge"><span>✓</span> <span data-i18n="b2">Łatwa Konfiguracja</span></div>
+        <div class="badge"><span>✓</span> <span data-i18n="b3">Ochrona 24/7</span></div>
+        <div class="badge"><span>✓</span> <span data-i18n="b4">Ping &lt;50ms</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <p>© 2025 FenixExelent · <span data-i18n="footer_tagline">Ochrona Twojego Serwera Discord</span></p>
+  <div class="footer-links">
+    <a href="#" data-i18n="footer_privacy">Prywatność</a>
+    <a href="#" data-i18n="footer_terms">Warunki</a>
+    <a href="#" data-i18n="footer_support">Support</a>
+    <a href="#" data-i18n="footer_discord">Discord</a>
+  </div>
+</footer>
+
+<script>
+// ── PARTICLE CANVAS ──
+const canvas = document.getElementById('heroCanvas');
+const ctx = canvas.getContext('2d');
+let W, H, particles = [];
+
+function resize() {
+  W = canvas.width = canvas.offsetWidth;
+  H = canvas.height = canvas.offsetHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+class Particle {
+  constructor() { this.reset(); }
+  reset() {
+    this.x = Math.random() * W;
+    this.y = Math.random() * H;
+    this.vx = (Math.random() - 0.5) * 0.4;
+    this.vy = -Math.random() * 0.5 - 0.2;
+    this.r = Math.random() * 1.5 + 0.5;
+    this.life = 0;
+    this.maxLife = Math.random() * 180 + 80;
+    this.gold = Math.random() > 0.7;
+  }
+  update() {
+    this.x += this.vx;
+    this.y += this.vy;
+    this.life++;
+    if (this.life > this.maxLife || this.y < -10) this.reset();
+  }
+  draw() {
+    const p = this.life / this.maxLife;
+    const a = p < 0.2 ? p/0.2 : p > 0.8 ? (1-p)/0.2 : 1;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.r, 0, Math.PI*2);
+    ctx.fillStyle = this.gold
+      ? `rgba(245,158,11,${a * 0.6})`
+      : `rgba(59,130,246,${a * 0.5})`;
+    ctx.fill();
+  }
+}
+
+for (let i = 0; i < 120; i++) {
+  const p = new Particle();
+  p.life = Math.floor(Math.random() * p.maxLife);
+  particles.push(p);
+}
+
+function animate() {
+  ctx.clearRect(0,0,W,H);
+  // draw connection lines
+  for (let i = 0; i < particles.length; i++) {
+    for (let j = i+1; j < particles.length; j++) {
+      const dx = particles[i].x - particles[j].x;
+      const dy = particles[i].y - particles[j].y;
+      const dist = Math.sqrt(dx*dx+dy*dy);
+      if (dist < 90) {
+        ctx.beginPath();
+        ctx.moveTo(particles[i].x, particles[i].y);
+        ctx.lineTo(particles[j].x, particles[j].y);
+        ctx.strokeStyle = `rgba(37,99,235,${(1 - dist/90) * 0.08})`;
+        ctx.lineWidth = 0.5;
+        ctx.stroke();
+      }
+    }
+  }
+  particles.forEach(p => { p.update(); p.draw(); });
+  requestAnimationFrame(animate);
+}
+animate();
+
+// ── SCROLL REVEAL ──
+const revealEls = document.querySelectorAll('.reveal');
+const io = new IntersectionObserver((entries) => {
+  entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); io.unobserve(e.target); } });
+}, { threshold: 0.12 });
+revealEls.forEach(el => io.observe(el));
+
+// ── TRANSLATIONS ──
+const translations = {
+  pl: {
+    nav_features:'Funkcje', nav_protection:'Ochrona', nav_why:'Dlaczego My', nav_start:'Zacznij', nav_add:'Dodaj Bota',
+    hero_badge:'Ochrona Nowej Generacji',
+    hero_desc:'Kompleksowa ochrona Twojego serwera Discord. Blokuj raiderów, nukerów i nadużycia — automatycznie, bez przerwy, bez kompromisów.',
+    hero_cta:'Dodaj do Serwera', hero_cta2:'Zobacz Funkcje',
+    stat1:'Serwerów', stat2:'Użytkowników', stat3:'Średni Ping',
+    feat_label:'Funkcje', feat_title:'Kompletny Arsenał Ochrony', feat_sub:'Wszystko, czego potrzebuje Twój serwer — w jednym bocie.',
+    f1_name:'AntiSpam', f1_desc:'Automatyczne wykrywanie spamu, floodu i nadużyć. Bot natychmiast wycisza sprawców i zapisuje pełne logi incydentów do późniejszego przeglądu.',
+    f2_name:'AntiRaid', f2_desc:'Ochrona przed masowymi dołączeniami i skoordynowanymi atakami. Automatyczne kicki, bany lub timeouty — konfigurowalne do Twoich potrzeb.',
+    f3_name:'Channel Guard', f3_desc:'Blokada nieautoryzowanego tworzenia i usuwania kanałów. Podejrzane zmiany cofane są automatycznie, zanim zdążą wyrządzić szkody.',
+    f4_name:'Weryfikacja', f4_desc:'Nowoczesny system weryfikacji oparty na przyciskach Discord. Eliminuje boty i konta tymczasowe, zanim dostaną się na serwer.',
+    f5_name:'System Ticketów', f5_desc:'Profesjonalny support z automatycznym tworzeniem prywatnych kanałów pomocy. Transkrypcje, priorytety i przypisanie moderatorów.',
+    f6_name:'Dashboard WWW', f6_desc:'Zarządzaj wszystkimi ustawieniami przez intuicyjny panel webowy. Logi, statystyki i konfiguracja — w jednym miejscu, z każdego urządzenia.',
+    thr_label:'Inteligentne wykrywanie', thr_title:'Zagrożenia, Które Blokujemy', thr_sub:'FenixExelent monitoruje każde działanie na serwerze i reaguje błyskawicznie, zanim pojawi się szkoda.',
+    t1:'Dodawanie Botów', t2:'Banowanie Członków', t3:'Kickowanie Członków', t4:'Tworzenie Kanałów', t5:'Usuwanie Kanałów', t6:'Tworzenie Ról', t7:'Usuwanie Ról', t8:'Niebezpieczne Uprawnienia', t9:'Nadawanie Niebezpiecznych Ról', t10:'Zmiana Vanity URL', t11:'Tworzenie Webhooków', t12:'Ping @everyone i @here',
+    band1:'Serwery Chronione', band2:'Użytkownicy Pod Ochroną', band3:'Średni Ping', band4:'Aktywna Ochrona',
+    why_label:'Przewaga', why_title:'Dlaczego FenixExelent?', why_sub:'Zaprojektowany przez moderatorów, dla moderatorów. Zero kompromisów w bezpieczeństwie.',
+    w1t:'Nowoczesny Dashboard', w1d:'Panel WWW z pełną kontrolą ustawień',
+    w2t:'Zaawansowana Moderacja', w2d:'Pełna automatyzacja bez potrzeby ręcznej interwencji',
+    w3t:'Automatyczna Ochrona', w3d:'Reaguje w ułamku sekundy od wykrycia zagrożenia',
+    w4t:'Łatwa Konfiguracja', w4d:'Gotowy do działania w mniej niż 5 minut',
+    w5t:'Wysoka Wydajność', w5d:'Ping poniżej 50ms, dostępność 99.9%',
+    w6t:'Darmowy Dostęp', w6d:'Pełna ochrona bez żadnych ukrytych kosztów',
+    cta_title:'Dołącz Dziś', cta_desc:'Dodaj FenixExelent na swój serwer i zapewnij społeczności najwyższy poziom bezpieczeństwa. Za darmo, zawsze.', cta_btn:'Dodaj FenixExelent',
+    b1:'Darmowy', b2:'Łatwa Konfiguracja', b3:'Ochrona 24/7', b4:'Ping <50ms',
+    footer_tagline:'Ochrona Twojego Serwera Discord', footer_privacy:'Prywatność', footer_terms:'Warunki', footer_support:'Support', footer_discord:'Discord'
+  },
+  en: {
+    nav_features:'Features', nav_protection:'Protection', nav_why:'Why Us', nav_start:'Get Started', nav_add:'Add Bot',
+    hero_badge:'Next-Gen Server Protection',
+    hero_desc:'Comprehensive protection for your Discord server. Block raiders, nukers, and abuse — automatically, around the clock, without compromise.',
+    hero_cta:'Add to Server', hero_cta2:'View Features',
+    stat1:'Servers', stat2:'Users', stat3:'Average Ping',
+    feat_label:'Features', feat_title:'Complete Protection Arsenal', feat_sub:'Everything your server needs — in one bot.',
+    f1_name:'AntiSpam', f1_desc:'Automatic detection of spam, flooding, and abuse. The bot instantly mutes offenders and saves complete incident logs for later review.',
+    f2_name:'AntiRaid', f2_desc:'Protection against mass joins and coordinated attacks. Automatic kicks, bans, or timeouts — fully configurable to your needs.',
+    f3_name:'Channel Guard', f3_desc:'Blocks unauthorized channel creation and deletion. Suspicious changes are automatically reversed before they can cause damage.',
+    f4_name:'Verification', f4_desc:'Modern verification system based on Discord buttons. Eliminates bots and throwaway accounts before they reach your server.',
+    f5_name:'Ticket System', f5_desc:'Professional support with automatic creation of private help channels. Transcripts, priorities, and moderator assignment included.',
+    f6_name:'Web Dashboard', f6_desc:'Manage all settings through an intuitive web panel. Logs, statistics, and configuration — in one place, from any device.',
+    thr_label:'Intelligent Detection', thr_title:'Threats We Block', thr_sub:'FenixExelent monitors every action on the server and reacts instantly before damage occurs.',
+    t1:'Adding Bots', t2:'Banning Members', t3:'Kicking Members', t4:'Creating Channels', t5:'Deleting Channels', t6:'Creating Roles', t7:'Deleting Roles', t8:'Dangerous Permissions', t9:'Granting Dangerous Roles', t10:'Changing Vanity URL', t11:'Creating Webhooks', t12:'Pinging @everyone & @here',
+    band1:'Protected Servers', band2:'Users Protected', band3:'Average Ping', band4:'Active Protection',
+    why_label:'Advantage', why_title:'Why FenixExelent?', why_sub:'Built by moderators, for moderators. Zero compromises on security.',
+    w1t:'Modern Dashboard', w1d:'Web panel with full settings control',
+    w2t:'Advanced Moderation', w2d:'Full automation without manual intervention',
+    w3t:'Automatic Protection', w3d:'Reacts within milliseconds of detecting a threat',
+    w4t:'Easy Setup', w4d:'Up and running in under 5 minutes',
+    w5t:'High Performance', w5d:'Ping below 50ms, 99.9% uptime',
+    w6t:'Free Access', w6d:'Full protection with no hidden costs',
+    cta_title:'Join Today', cta_desc:'Add FenixExelent to your server and give your community the highest level of security. Free, always.', cta_btn:'Add FenixExelent',
+    b1:'Free', b2:'Easy Setup', b3:'24/7 Protection', b4:'Ping <50ms',
+    footer_tagline:'Discord Server Protection', footer_privacy:'Privacy', footer_terms:'Terms', footer_support:'Support', footer_discord:'Discord'
+  },
+  de: {
+    nav_features:'Funktionen', nav_protection:'Schutz', nav_why:'Warum Wir', nav_start:'Loslegen', nav_add:'Bot Hinzufügen',
+    hero_badge:'Schutz der Nächsten Generation',
+    hero_desc:'Umfassender Schutz für deinen Discord-Server. Blockiere Raiders, Nuker und Missbrauch — automatisch, rund um die Uhr, ohne Kompromisse.',
+    hero_cta:'Zum Server hinzufügen', hero_cta2:'Funktionen ansehen',
+    stat1:'Server', stat2:'Nutzer', stat3:'Ø Ping',
+    feat_label:'Funktionen', feat_title:'Vollständiges Schutz-Arsenal', feat_sub:'Alles, was dein Server braucht — in einem Bot.',
+    f1_name:'AntiSpam', f1_desc:'Automatische Erkennung von Spam, Flooding und Missbrauch. Der Bot stummschaltet Täter sofort und speichert vollständige Vorfallsprotokolle.',
+    f2_name:'AntiRaid', f2_desc:'Schutz vor massenhaften Beitritten und koordinierten Angriffen. Automatische Kicks, Bans oder Timeouts — vollständig konfigurierbar.',
+    f3_name:'Channel Guard', f3_desc:'Blockiert unbefugtes Erstellen und Löschen von Kanälen. Verdächtige Änderungen werden automatisch rückgängig gemacht.',
+    f4_name:'Verifizierung', f4_desc:'Modernes Verifizierungssystem basierend auf Discord-Buttons. Eliminiert Bots und Wegwerfkonten, bevor sie den Server erreichen.',
+    f5_name:'Ticket-System', f5_desc:'Professioneller Support mit automatischer Erstellung privater Hilfskanäle. Transkripte, Prioritäten und Moderatorzuweisung.',
+    f6_name:'Web-Dashboard', f6_desc:'Verwalte alle Einstellungen über ein intuitives Webpanel. Logs, Statistiken und Konfiguration — an einem Ort, von jedem Gerät.',
+    thr_label:'Intelligente Erkennung', thr_title:'Bedrohungen, Die Wir Blockieren', thr_sub:'FenixExelent überwacht jede Aktion auf dem Server und reagiert sofort, bevor Schaden entsteht.',
+    t1:'Bots hinzufügen', t2:'Mitglieder bannen', t3:'Mitglieder kicken', t4:'Kanäle erstellen', t5:'Kanäle löschen', t6:'Rollen erstellen', t7:'Rollen löschen', t8:'Gefährliche Berechtigungen', t9:'Gefährliche Rollen vergeben', t10:'Vanity URL ändern', t11:'Webhooks erstellen', t12:'@everyone & @here pingen',
+    band1:'Geschützte Server', band2:'Geschützte Nutzer', band3:'Ø Ping', band4:'Aktiver Schutz',
+    why_label:'Vorteil', why_title:'Warum FenixExelent?', why_sub:'Von Moderatoren für Moderatoren entwickelt. Null Kompromisse bei der Sicherheit.',
+    w1t:'Modernes Dashboard', w1d:'Webpanel mit voller Einstellungskontrolle',
+    w2t:'Erweiterte Moderation', w2d:'Vollautomatisierung ohne manuelle Eingriffe',
+    w3t:'Automatischer Schutz', w3d:'Reagiert in Millisekunden nach Bedrohungserkennung',
+    w4t:'Einfache Einrichtung', w4d:'In weniger als 5 Minuten betriebsbereit',
+    w5t:'Hohe Leistung', w5d:'Ping unter 50ms, 99,9% Verfügbarkeit',
+    w6t:'Kostenloser Zugang', w6d:'Vollständiger Schutz ohne versteckte Kosten',
+    cta_title:'Jetzt Beitreten', cta_desc:'Füge FenixExelent zu deinem Server hinzu und biete deiner Community höchste Sicherheit. Kostenlos, immer.', cta_btn:'FenixExelent Hinzufügen',
+    b1:'Kostenlos', b2:'Einfache Einrichtung', b3:'24/7 Schutz', b4:'Ping <50ms',
+    footer_tagline:'Discord Server Schutz', footer_privacy:'Datenschutz', footer_terms:'AGB', footer_support:'Support', footer_discord:'Discord'
+  },
+  fr: {
+    nav_features:'Fonctionnalités', nav_protection:'Protection', nav_why:'Pourquoi Nous', nav_start:'Commencer', nav_add:'Ajouter le Bot',
+    hero_badge:'Protection de Nouvelle Génération',
+    hero_desc:'Protection complète pour votre serveur Discord. Bloquez les raiders, nukers et abus — automatiquement, 24h/24, sans compromis.',
+    hero_cta:'Ajouter au Serveur', hero_cta2:'Voir les Fonctionnalités',
+    stat1:'Serveurs', stat2:'Utilisateurs', stat3:'Ping Moyen',
+    feat_label:'Fonctionnalités', feat_title:'Arsenal de Protection Complet', feat_sub:'Tout ce dont votre serveur a besoin — en un seul bot.',
+    f1_name:'AntiSpam', f1_desc:'Détection automatique du spam, flooding et abus. Le bot réduit immédiatement au silence les contrevenants et enregistre les journaux d\'incidents.',
+    f2_name:'AntiRaid', f2_desc:'Protection contre les jonctions massives et les attaques coordonnées. Kicks, bans ou timeouts automatiques — entièrement configurables.',
+    f3_name:'Channel Guard', f3_desc:'Bloque la création et la suppression non autorisées de canaux. Les changements suspects sont automatiquement annulés avant tout dommage.',
+    f4_name:'Vérification', f4_desc:'Système de vérification moderne basé sur les boutons Discord. Élimine les bots et comptes jetables avant qu\'ils n\'atteignent votre serveur.',
+    f5_name:'Système de Tickets', f5_desc:'Support professionnel avec création automatique de canaux d\'aide privés. Transcriptions, priorités et attribution des modérateurs.',
+    f6_name:'Tableau de Bord', f6_desc:'Gérez tous les paramètres via un panel web intuitif. Logs, statistiques et configuration — au même endroit, depuis n\'importe quel appareil.',
+    thr_label:'Détection Intelligente', thr_title:'Menaces Que Nous Bloquons', thr_sub:'FenixExelent surveille chaque action sur le serveur et réagit instantanément avant tout dommage.',
+    t1:'Ajout de Bots', t2:'Bannissement de Membres', t3:'Expulsion de Membres', t4:'Création de Canaux', t5:'Suppression de Canaux', t6:'Création de Rôles', t7:'Suppression de Rôles', t8:'Permissions Dangereuses', t9:'Attribution de Rôles Dangereux', t10:'Changement du Vanity URL', t11:'Création de Webhooks', t12:'Ping @everyone & @here',
+    band1:'Serveurs Protégés', band2:'Utilisateurs Protégés', band3:'Ping Moyen', band4:'Protection Active',
+    why_label:'Avantage', why_title:'Pourquoi FenixExelent?', why_sub:'Conçu par des modérateurs, pour des modérateurs. Zéro compromis sur la sécurité.',
+    w1t:'Tableau de Bord Moderne', w1d:'Panel web avec contrôle complet des paramètres',
+    w2t:'Modération Avancée', w2d:'Automatisation complète sans intervention manuelle',
+    w3t:'Protection Automatique', w3d:'Réagit en millisecondes après détection d\'une menace',
+    w4t:'Configuration Facile', w4d:'Opérationnel en moins de 5 minutes',
+    w5t:'Haute Performance', w5d:'Ping inférieur à 50ms, disponibilité 99,9%',
+    w6t:'Accès Gratuit', w6d:'Protection complète sans coûts cachés',
+    cta_title:'Rejoignez Aujourd\'hui', cta_desc:'Ajoutez FenixExelent à votre serveur et offrez à votre communauté le plus haut niveau de sécurité. Gratuit, toujours.', cta_btn:'Ajouter FenixExelent',
+    b1:'Gratuit', b2:'Configuration Facile', b3:'Protection 24/7', b4:'Ping <50ms',
+    footer_tagline:'Protection de Serveur Discord', footer_privacy:'Confidentialité', footer_terms:'CGU', footer_support:'Support', footer_discord:'Discord'
+  }
+};
+
+let currentLang = 'pl';
+function setLang(lang) {
+  currentLang = lang;
+  document.querySelectorAll('.lang-btn').forEach(b => b.classList.toggle('active', b.textContent === lang.toUpperCase()));
+  const t = translations[lang];
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    if (t[key] !== undefined) el.textContent = t[key];
+  });
+  // special: cta_title span
+  const ctaTitle = document.querySelector('.cta-title');
+  if (ctaTitle) {
+    const words = t['cta_title'].split(' ');
+    const last = words.pop();
+    ctaTitle.innerHTML = words.join(' ') + ' <span>' + last + '</span>';
+  }
+  document.documentElement.lang = lang;
+}
+</script>
+</body>
+</html>

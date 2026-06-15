@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FenixExelent Docs - Setup</title>
+<style>
+:root{
+  --bg:#050814;
+  --side:#080d1a;
+  --card:#0b1225;
+  --card2:#101936;
+  --blue:#2563eb;
+  --blue2:#60a5fa;
+  --gold:#f59e0b;
+  --text:#f8fbff;
+  --muted:#9ca3af;
+  --border:rgba(96,165,250,.25);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:Arial,sans-serif}
+header{height:64px;background:#080d1a;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 28px;position:sticky;top:0;z-index:20}
+.logo{font-size:24px;font-weight:900}.logo span{color:var(--gold)}
+header a{color:#60a5fa;text-decoration:none;font-weight:800}
+.layout{display:grid;grid-template-columns:280px 1fr;min-height:calc(100vh - 64px)}
+.sidebar{background:var(--side);border-right:1px solid var(--border);padding:24px;position:sticky;top:64px;height:calc(100vh - 64px);overflow:auto}
+.group{margin-bottom:28px}
+.group h4{font-size:12px;color:#60a5fa;text-transform:uppercase;letter-spacing:.14em;margin:0 0 12px}
+.nav a{display:block;color:#dbeafe;text-decoration:none;padding:12px 14px;border-radius:10px;margin-bottom:6px;font-weight:700}
+.nav a:hover,.nav a.active{background:rgba(37,99,235,.22);color:white}
+.main{padding:48px;max-width:1100px}
+.badge{color:#60a5fa;font-weight:900;text-transform:uppercase;letter-spacing:.16em;font-size:13px}
+h1{font-size:52px;margin:14px 0 12px;line-height:1.05}
+h2{font-size:32px;margin:44px 0 16px}
+p{color:#b9c5e8;font-size:17px;line-height:1.8}
+.card{background:linear-gradient(180deg,var(--card),#070b18);border:1px solid var(--border);border-radius:18px;padding:24px;margin:18px 0}
+.steps{display:grid;gap:16px;margin-top:24px}
+.step{display:grid;grid-template-columns:52px 1fr;gap:18px;background:var(--card);border:1px solid var(--border);border-radius:18px;padding:20px}
+.num{width:52px;height:52px;border-radius:14px;background:linear-gradient(135deg,var(--blue),#1d4ed8);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:22px}
+.step h3{margin:0 0 8px;font-size:22px}
+.code{background:#020617;border:1px solid rgba(96,165,250,.22);border-radius:14px;padding:18px;color:#dbeafe;font-family:Consolas,monospace;overflow:auto;margin-top:12px}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:18px}
+.feature{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:22px}
+.feature h3{margin:0 0 10px;color:white}
+.btns{display:flex;gap:14px;flex-wrap:wrap;margin-top:26px}
+.btn{background:linear-gradient(135deg,var(--blue),#1d4ed8);color:white;text-decoration:none;padding:14px 22px;border-radius:12px;font-weight:900}
+.btn.secondary{background:#111936;border:1px solid var(--border);color:#bfdbfe}
+.warn{border-color:rgba(245,158,11,.4);background:rgba(245,158,11,.08)}
+.ok{border-color:rgba(34,197,94,.35);background:rgba(34,197,94,.08)}
+.threat-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:18px}
+.threat{background:rgba(37,99,235,.08);border:1px solid rgba(96,165,250,.24);border-radius:14px;padding:15px 16px;color:#dbeafe;font-weight:800;display:flex;align-items:center;gap:10px}
+.threat span{font-size:18px}
+@media(max-width:900px){.layout{grid-template-columns:1fr}.sidebar{position:relative;top:0;height:auto}.main{padding:26px}.grid,.threat-grid{grid-template-columns:1fr}h1{font-size:38px}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Fenix<span>Exelent</span> Docs</div>
+  <a href="/">Strona główna</a>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <div class="group">
+      <h4>Getting Started</h4>
+      <div class="nav">
+        <a class="active" href="#setup">Setup</a>
+        <a href="/dashboard.html">Dashboard</a>
+        <a href="#commands">Komendy</a>
+        <a href="#threats">Zagrożenia</a>
+      </div>
+    </div>
+
+    <div class="group">
+      <h4>Moduły</h4>
+      <div class="nav">
+        <a href="#antispam">AntiSpam</a>
+        <a href="#antiraid">AntiRaid</a>
+        <a href="#guard">Channel Guard</a>
+        <a href="#verify">Weryfikacja</a>
+        <a href="#tickets">Tickety</a>
+        <a href="#logs">Logi</a>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <section id="setup">
+      <div class="badge">Getting Started</div>
+      <h1>Konfiguracja FenixExelent</h1>
+      <p>
+        Skonfiguruj bota FenixExelent na swoim serwerze Discord w kilku krokach.
+        Możesz używać zarówno komend slash, jak i panelu WWW.
+      </p>
+
+      <div class="btns">
+        <a class="btn" href="/invite">Dodaj bota</a>
+        <a class="btn secondary" href="/dashboard.html">Otwórz dashboard</a>
+      </div>
+
+      <div class="card warn">
+        <h3>⚠️ Wymagane uprawnienia</h3>
+        <p>
+          Bot powinien mieć uprawnienia administratora lub minimum:
+          zarządzanie kanałami, rolami, wiadomościami, banowanie, wyrzucanie,
+          timeout oraz wysyłanie wiadomości.
+        </p>
+      </div>
+    </section>
+
+    <section id="threats">
+      <h2>🚫 Zagrożenia, które blokujemy</h2>
+      <div class="card">
+        <p>
+          FenixExelent monitoruje wiadomości, linki i akcje administracyjne,
+          aby zatrzymać najczęstsze zagrożenia zanim wyrządzą szkody na serwerze.
+        </p>
+        <div class="threat-grid">
+          <div class="threat"><span>🌐</span>Scam linki i phishing</div><div class="threat"><span>🧲</span>IP loggery</div><div class="threat"><span>🎁</span>Fake Discord Nitro</div><div class="threat"><span>🎮</span>Fake Steam rewards</div><div class="threat"><span>🪙</span>Crypto giveaway scam</div><div class="threat"><span>💬</span>Spam i flood</div><div class="threat"><span>🚨</span>Masowe wejścia botów</div><div class="threat"><span>🔒</span>Nieautoryzowane tworzenie kanałów</div><div class="threat"><span>🪝</span>Nadużywanie webhooków</div><div class="threat"><span>🧪</span>Podejrzane domeny .xyz / .click / .top / .work</div><div class="threat"><span>⚠️</span>Niebezpieczne uprawnienia</div><div class="threat"><span>📣</span>Ping @everyone i @here</div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Szybka konfiguracja</h2>
+
+      <div class="steps">
+        <div class="step">
+          <div class="num">1</div>
+          <div>
+            <h3>Dodaj bota na serwer</h3>
+            <p>Kliknij przycisk „Dodaj bota”, wybierz serwer i zaakceptuj uprawnienia.</p>
+            <div class="code">https://fenixexelent.onrender.com/invite</div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="num">2</div>
+          <div>
+            <h3>Zarejestruj komendy slash</h3>
+            <p>Uruchom komendę w PowerShellu w folderze projektu.</p>
+            <div class="code">npm run deploy</div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="num">3</div>
+          <div>
+            <h3>Uruchom bota</h3>
+            <p>Po starcie bot pokaże status online i link do dashboardu.</p>
+            <div class="code">npm start</div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="num">4</div>
+          <div>
+            <h3>Wykonaj automatyczny setup</h3>
+            <p>Na Discordzie wpisz komendę:</p>
+            <div class="code">/setup</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="commands">
+      <h2>Najważniejsze komendy</h2>
+      <div class="grid">
+        <div class="feature"><h3>/setup</h3><p>Tworzy kanały statystyk, regulamin, weryfikację, logi i kategorię ticketów.</p></div>
+        <div class="feature"><h3>/dashboard</h3><p>Wysyła link do panelu WWW.</p></div>
+        <div class="feature"><h3>/security</h3><p>Pokazuje panel bezpieczeństwa z przyciskami.</p></div>
+        <div class="feature"><h3>/status</h3><p>Pokazuje aktualny status modułów.</p></div>
+      </div>
+    </section>
+
+    <section id="antispam">
+      <h2>🛡️ AntiSpam</h2>
+      <div class="card">
+        <p>Chroni serwer przed spamem, floodem i szybkim wysyłaniem wiadomości.</p>
+        <div class="code">
+/antispam on<br>
+/antispam off<br>
+/antispam set wiadomosci:5 czas:3 mute:10<br>
+/antispam log kanal:#logi
+        </div>
+      </div>
+    </section>
+
+    <section id="antiraid">
+      <h2>🚨 AntiRaid</h2>
+      <div class="card">
+        <p>Wykrywa masowe dołączenia i automatycznie reaguje kickiem, banem lub mutem.</p>
+        <div class="code">
+/antiraid on<br>
+/antiraid set dolaczenia:10 czas:10 akcja:kick<br>
+/antiraid lockdown aktywny:true
+        </div>
+      </div>
+    </section>
+
+    <section id="guard">
+      <h2>🔒 Channel Guard</h2>
+      <div class="card">
+        <p>Blokuje nieautoryzowane tworzenie kanałów i zapisuje incydenty w logach.</p>
+        <div class="code">
+/channelguard on<br>
+/channelguard whitelist rola:@Admin<br>
+/channelguard log kanal:#security-logi
+        </div>
+      </div>
+    </section>
+
+    <section id="verify">
+      <h2>✅ Weryfikacja</h2>
+      <div class="card">
+        <p>Użytkownik klika przycisk weryfikacji i automatycznie otrzymuje rolę.</p>
+        <div class="code">
+/verification setup rola:@Zweryfikowany<br>
+/verification on<br>
+/verification panel
+        </div>
+      </div>
+    </section>
+
+    <section id="tickets">
+      <h2>🎫 Tickety</h2>
+      <div class="card">
+        <p>Tworzy prywatne kanały pomocy dla użytkowników i supportu.</p>
+        <div class="code">
+/ticket setup rola:@Support logi:#ticket-logi<br>
+/ticket on<br>
+/ticket panel
+        </div>
+      </div>
+    </section>
+
+    <section id="logs">
+      <h2>📋 Logi</h2>
+      <div class="card ok">
+        <p>Ustaw kanały logów, aby bot zapisywał akcje moderacyjne, antyspam, antyraid i tickety.</p>
+        <div class="code">
+/modlog kanal:#mod-logi<br>
+/antispam log kanal:#antispam-logi<br>
+/antiraid log kanal:#antiraid-logi
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+</body>
+</html>
