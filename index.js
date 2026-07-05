@@ -271,16 +271,39 @@ setInterval(() => {
 
 // ─── ANTISCAM ──────────────────────────────────────────────────────────────
 function extractDomains(text) {
-  const domainRegex = /(?:https?:\/\/)?(?:www\.)?([a-z0-9-]+\.[a-z]{2,})(?:\/[^\s]*)?/gi;
+  const domainRegex = /(?:https?:\/\/)?(?:www\.)?([a-z0-9-]+(?:\.[a-z0-9-]+)+)(?:\/[^\s<]*)?/gi;
   const domains = [];
   let match;
 
-  while ((match = domainRegex.exec(text)) !== null) {
-    domains.push(match[1].toLowerCase());
+  while ((match = domainRegex.exec(String(text || ''))) !== null) {
+    const domain = normalizeDomainInput(match[1]);
+    if (domain && !domains.includes(domain)) domains.push(domain);
   }
 
   return domains;
 }
+
+const TRUSTED_DOMAINS = [
+  'discord.com',
+  'discord.gg',
+  'discordapp.com',
+  'youtube.com',
+  'youtu.be',
+  'twitch.tv',
+  'github.com',
+  'google.com',
+  'reddit.com',
+  'x.com',
+  'twitter.com',
+  'tiktok.com',
+  'instagram.com',
+  'facebook.com',
+  'steamcommunity.com',
+  'steampowered.com',
+  'crypto.com',
+  'coinbase.com',
+  'binance.com'
+];
 
 const DEFAULT_BLOCKED_DOMAINS = [
   // IP loggery / trackery
@@ -358,7 +381,10 @@ const DEFAULT_BLOCKED_DOMAINS = [
   'steam-support.net',
   'steam-security.net',
 
-  // Crypto scam
+  // Crypto / casino / fake reward scam — przykłady jak ze screenów
+  'buzzium.com',
+  'tornavlin.com',
+  'fomavlin.com',
   'crypto-airdrop.xyz',
   'bitcoin-giveaway.xyz',
   'eth-airdrop.xyz',
@@ -370,6 +396,13 @@ const DEFAULT_BLOCKED_DOMAINS = [
   'crypto-reward.net',
   'crypto-airdrop.net',
   'claim-airdrop.net',
+  'usdt-bonus.xyz',
+  'claim-usdt.xyz',
+  'free-usdt.xyz',
+  'beast-bonus.xyz',
+  'mrbeast-giveaway.xyz',
+  'casino-bonus.xyz',
+  'wallet-reward.xyz',
 
   // Rewards / gift scam
   'epicgift.xyz',
@@ -401,7 +434,22 @@ const SUSPICIOUS_TLDS = [
   'gift',
   'vip',
   'site',
-  'online'
+  'online',
+  'shop',
+  'store',
+  'icu',
+  'cyou',
+  'club',
+  'pro',
+  'live',
+  'fun',
+  'lol',
+  'link',
+  'cloud',
+  'quest',
+  'monster',
+  'sbs',
+  'world'
 ];
 
 const SUSPICIOUS_KEYWORDS = [
@@ -413,7 +461,35 @@ const SUSPICIOUS_KEYWORDS = [
   'bonus',
   'claim',
   'airdrop',
-  'crypto'
+  'crypto',
+  'bitcoin',
+  'btc',
+  'eth',
+  'usdt',
+  'wallet',
+  'withdraw',
+  'deposit',
+  'casino',
+  'bet',
+  'beast',
+  'giveaway',
+  'promo',
+  'prize',
+  'money',
+  'cash'
+];
+
+const CRYPTO_CASINO_SCAM_PATTERNS = [
+  /withdrawal\s+success/i,
+  /\bwithdraw(?:al|n)?\b.*\b(?:usdt|btc|eth|crypto|wallet|bonus|reward)\b/i,
+  /\b(?:usdt|btc|eth|crypto|wallet)\b.*\b(?:withdraw|bonus|reward|claim|airdrop|giveaway)\b/i,
+  /\bpromo\s*code\b/i,
+  /\bbonus\s*(?:code|reward|usdt|btc|eth)\b/i,
+  /\bclaim\s+(?:your\s+)?(?:reward|bonus|airdrop|nitro|usdt|crypto|prize)\b/i,
+  /\b(?:casino|betting?|gambl(?:e|ing))\b.*\b(?:bonus|promo|code|usdt|crypto|reward|withdraw)\b/i,
+  /\b(?:mr\s*beast|beast\s*games?)\b.*\b(?:casino|crypto|bonus|usdt|withdraw|reward|promo)\b/i,
+  /\$\s*\d{2,7}\s*(?:usdt|usd|btc|eth)\b/i,
+  /\b\d{2,7}\s*(?:usdt|btc|eth)\b/i,
 ];
 
 function normalizeDomainInput(input) {
@@ -422,7 +498,10 @@ function normalizeDomainInput(input) {
     .replace(/^https?:\/\//, '')
     .replace(/^www\./, '')
     .split('/')[0]
+    .split('?')[0]
+    .split('#')[0]
     .replace(/^•+/, '')
+    .replace(/^[^a-z0-9]+|[^a-z0-9.\-]+$/g, '')
     .trim();
 }
 
@@ -445,16 +524,86 @@ function normalizeBlockedDomains(domains = []) {
   return output;
 }
 
-function isSuspiciousDomain(domain) {
+function domainMatches(domain, rule) {
   const clean = normalizeDomainInput(domain);
-  const tld = clean.split('.').pop();
-
-  return (
-    SUSPICIOUS_TLDS.includes(tld) &&
-    SUSPICIOUS_KEYWORDS.some(word => clean.includes(word))
-  );
+  const target = normalizeDomainInput(rule);
+  return clean === target || clean.endsWith(`.${target}`);
 }
 
+function isTrustedDomain(domain) {
+  const clean = normalizeDomainInput(domain);
+  return TRUSTED_DOMAINS.some(trusted => domainMatches(clean, trusted));
+}
+
+function isBlockedDomain(domain, blockedDomains = DEFAULT_BLOCKED_DOMAINS) {
+  const clean = normalizeDomainInput(domain);
+  return blockedDomains.some(blocked => domainMatches(clean, blocked));
+}
+
+function hasCryptoCasinoScamText(text) {
+  const content = String(text || '');
+  return CRYPTO_CASINO_SCAM_PATTERNS.some(pattern => pattern.test(content));
+}
+
+function isSuspiciousDomain(domain, text = '') {
+  const clean = normalizeDomainInput(domain);
+  if (!clean || isTrustedDomain(clean)) return false;
+
+  const parts = clean.split('.');
+  const tld = parts.pop();
+  const name = parts.join('.');
+  const hits = SUSPICIOUS_KEYWORDS.filter(word => name.includes(word));
+
+  if (SUSPICIOUS_TLDS.includes(tld) && hits.length >= 1) return true;
+  if (hits.length >= 2) return true;
+  if (hasCryptoCasinoScamText(text) && hits.length >= 1) return true;
+
+  return false;
+}
+
+function scanMessageForScam(content, gc) {
+  const text = String(content || '');
+  const domains = extractDomains(text);
+
+  // Ważne: łączymy wbudowaną bazę z domenami dodanymi komendą /scamdomains.
+  // Wcześniej pusta tablica w configu mogła wyłączać domyślną bazę domen.
+  const blocked = normalizeBlockedDomains([
+    ...DEFAULT_BLOCKED_DOMAINS,
+    ...(gc.antiscam?.blockedDomains || []),
+  ]);
+
+  if (gc.antiscam) gc.antiscam.blockedDomains = blocked;
+
+  const foundDomain = domains.find(domain =>
+    !isTrustedDomain(domain) &&
+    (isBlockedDomain(domain, blocked) || isSuspiciousDomain(domain, text))
+  );
+
+  if (foundDomain) {
+    return {
+      type: 'domain',
+      value: foundDomain,
+      reason: isBlockedDomain(foundDomain, blocked)
+        ? 'Domena jest na liście blokowanych domen.'
+        : 'Podejrzana domena pasuje do wzorca scam/crypto/casino.'
+    };
+  }
+
+  // Blokuj też wiadomości z dowolną obcą domeną, jeżeli tekst wygląda jak scam
+  // typu „Withdrawal Success”, „$5000 USDT”, „promo code”, „casino bonus”.
+  if (domains.length && hasCryptoCasinoScamText(text)) {
+    const nonTrusted = domains.find(domain => !isTrustedDomain(domain));
+    if (nonTrusted) {
+      return {
+        type: 'text+domain',
+        value: nonTrusted,
+        reason: 'Wiadomość z linkiem zawiera tekst typowy dla crypto/casino scam.'
+      };
+    }
+  }
+
+  return null;
+}
 
 client.on('messageCreate', async (message) => {
   if (!message.guild || message.author.bot) return;
@@ -462,18 +611,10 @@ client.on('messageCreate', async (message) => {
   const gc = getGuildConfig(message.guild.id);
   if (!gc.antiscam?.enabled) return;
 
-  const domains = extractDomains(message.content);
-  if (!domains.length) return;
+  const scam = scanMessageForScam(message.content, gc);
+  if (!scam) return;
 
-  gc.antiscam.blockedDomains = normalizeBlockedDomains(gc.antiscam.blockedDomains || DEFAULT_BLOCKED_DOMAINS);
-  const blocked = gc.antiscam.blockedDomains;
-
-  const found = domains.find(domain =>
-    blocked.includes(domain) || isSuspiciousDomain(domain)
-  );
-
-  if (!found) return;
-
+  const found = scam.value;
   const member = await message.guild.members.fetch(message.author.id).catch(() => null);
   if (!member) return;
 
@@ -504,9 +645,10 @@ client.on('messageCreate', async (message) => {
     embeds: [embed(
       '#ff4757',
       '🔍 Scam wykryty!',
-      `<@${message.author.id}>, Twoja wiadomość zawiera zablokowaną domenę.`,
+      `<@${message.author.id}>, Twoja wiadomość wygląda jak scam link i została zablokowana.`,
       [
-        { name: 'Domena', value: `\`${found}\``, inline: true },
+        { name: 'Wykryto', value: `\`${found}\``, inline: true },
+        { name: 'Powód', value: scam.reason, inline: false },
         { name: 'Mute', value: `${gc.antiscam.muteMinutes || 60} min`, inline: true }
       ]
     )]
@@ -516,13 +658,14 @@ client.on('messageCreate', async (message) => {
 
   await sendLog(message.guild, gc.antiscam.logChannel, embed(
     '#ff4757',
-    '🔍 AntiScam — zablokowana domena',
+    '🔍 AntiScam — zablokowany scam link',
     `Wykryto scam link od ${message.author.tag}.`,
     [
       { name: 'Użytkownik', value: `<@${message.author.id}>`, inline: true },
-      { name: 'Domena', value: `\`${found}\``, inline: true },
+      { name: 'Wykryto', value: `\`${found}\``, inline: true },
+      { name: 'Powód', value: scam.reason, inline: false },
       { name: 'Kanał', value: `<#${message.channel.id}>`, inline: true },
-      { name: 'Treść', value: message.content.slice(0, 500), inline: false }
+      { name: 'Treść', value: message.content.slice(0, 500) || 'Brak treści', inline: false }
     ]
   ));
 
@@ -531,7 +674,7 @@ client.on('messageCreate', async (message) => {
     'MUTE (AntiScam)',
     message.author,
     client.user,
-    `Scam domena: ${found}`,
+    `Scam: ${found} — ${scam.reason}`,
     '#ff4757'
   );
 });
@@ -1020,7 +1163,10 @@ if (commandName === 'scamdomains') {
   if (!gc.antiscam.blockedDomains) {
     gc.antiscam.blockedDomains = [...DEFAULT_BLOCKED_DOMAINS];
   } else {
-    gc.antiscam.blockedDomains = normalizeBlockedDomains(gc.antiscam.blockedDomains);
+    gc.antiscam.blockedDomains = normalizeBlockedDomains([
+      ...DEFAULT_BLOCKED_DOMAINS,
+      ...gc.antiscam.blockedDomains,
+    ]);
   }
 
   if (sub === 'add') {
