@@ -977,7 +977,7 @@ if (commandName === 'help') {
         .setTitle('🔥 FenixExelent — Panel Pomocy')
         .setDescription('Kompletna lista komend dostępnych na serwerze')
         .addFields(
-          { name: '⚙️ Konfiguracja',   value: '`setup` `security` `status` `dashboard` `stats`',                                              inline: false },
+          { name: '⚙️ Konfiguracja',   value: '`setup` `security` `status` `dashboard` `stats` `refreshbot`',                                 inline: false },
           { name: '🚫 AntiSpam',        value: '`antispam on` `antispam off` `antispam set` `antispam log`',                                    inline: true  },
           { name: '🚨 AntiRaid',        value: '`antiraid on` `antiraid off` `antiraid set` `antiraid lockdown` `antiraid log`',                inline: true  },
           { name: '🔒 Channel Guard',   value: '`channelguard on` `channelguard off` `channelguard whitelist` `channelguard log`',              inline: true  },
@@ -1151,6 +1151,61 @@ if (commandName === 'help') {
     await interaction.deferReply({ ephemeral: true });
     await updateStats(interaction.guild);
     return interaction.editReply({ embeds: [embed('#2ed573', '✅ Statystyki odświeżone', 'Kanały statystyk zostały zaktualizowane.')] });
+  }
+
+  // ── refreshbot ────────────────────────────────────────────────────────
+  if (commandName === 'refreshbot') {
+    const OWNER_ID = process.env.OWNER_ID || '1075478964505677824';
+
+    if (interaction.user.id !== OWNER_ID) {
+      return interaction.reply({
+        content: '❌ Tylko właściciel bota może użyć tej komendy.',
+        ephemeral: true,
+      });
+    }
+
+    await interaction.deferReply({ ephemeral: true });
+
+    let refreshed = 0;
+    let failed = 0;
+
+    try {
+      config = loadConfig();
+      updateBotPresence();
+
+      for (const [, guild] of client.guilds.cache) {
+        try {
+          await updateStats(guild);
+          refreshed++;
+        } catch (err) {
+          failed++;
+          console.error(`RefreshBot stats error (${guild.id}):`, err.message);
+        }
+      }
+
+      return interaction.editReply({
+        embeds: [embed(
+          '#2ed573',
+          '🔄 Bot odświeżony',
+          'Odświeżono konfigurację, status bota oraz statystyki na serwerach.',
+          [
+            { name: 'Serwery odświeżone', value: `${refreshed}`, inline: true },
+            { name: 'Błędy', value: `${failed}`, inline: true },
+            { name: 'Serwery bota', value: `${client.guilds.cache.size}`, inline: true },
+          ]
+        )],
+      });
+    } catch (err) {
+      console.error('RefreshBot error:', err);
+
+      return interaction.editReply({
+        embeds: [embed(
+          '#ff4757',
+          '❌ Błąd odświeżania',
+          'Nie udało się odświeżyć bota. Sprawdź logi konsoli.'
+        )],
+      });
+    }
   }
 
   // ── modlog ────────────────────────────────────────────────────────────
@@ -1914,6 +1969,7 @@ Check the \`komendy\` channel.`
         '`/security` — panel bezpieczeństwa',
         '`/status` — status modułów',
         '`/stats` — odśwież statystyki',
+        '`/refreshbot` — odśwież bota na wszystkich serwerach',
         '`/antispam on/off/set/log`',
         '`/antiraid on/off/set/lockdown/log`',
         '`/channelguard on/off/whitelist/log`',
@@ -1933,6 +1989,7 @@ Check the \`komendy\` channel.`
         '`/security` — security panel',
         '`/status` — module status',
         '`/stats` — refresh stats',
+        '`/refreshbot` — refresh bot on all servers',
         '`/antispam on/off/set/log`',
         '`/antiraid on/off/set/lockdown/log`',
         '`/channelguard on/off/whitelist/log`',

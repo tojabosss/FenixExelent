@@ -8,6 +8,7 @@ const commands = [
   new SlashCommandBuilder().setName('security').setDescription('🛡️ Panel bezpieczeństwa'),
   new SlashCommandBuilder().setName('status').setDescription('📊 Status modułów bota'),
   new SlashCommandBuilder().setName('stats').setDescription('🔄 Odśwież statystyki serwera'),
+  new SlashCommandBuilder().setName('refreshbot').setDescription('🔄 Odśwież bota, config i statystyki na wszystkich serwerach'),
 
   new SlashCommandBuilder()
     .setName('modlog')
@@ -248,5 +249,3 @@ const rest = new REST({ version: '10' }).setToken(process.env.BOT_TOKEN);
     process.exit(1);
   }
 })();
-
-
