@@ -11,6 +11,17 @@ const commands = [
   new SlashCommandBuilder().setName('refreshbot').setDescription('🔄 Odśwież bota, config i statystyki na wszystkich serwerach'),
 
   new SlashCommandBuilder()
+    .setName('ocrscan')
+    .setDescription('👁️ OCR skan scam screenów')
+    .addSubcommand(s => s.setName('on').setDescription('Włącz OCR AntiScam dla screenów'))
+    .addSubcommand(s => s.setName('off').setDescription('Wyłącz OCR AntiScam dla screenów'))
+    .addSubcommand(s => s.setName('status').setDescription('Pokaż status OCR AntiScam'))
+    .addSubcommand(s => s
+      .setName('strict')
+      .setDescription('Włącz/wyłącz blokowanie samych obrazków bez tekstu')
+      .addBooleanOption(o => o.setName('aktywny').setDescription('true/false').setRequired(true))),
+
+  new SlashCommandBuilder()
     .setName('modlog')
     .setDescription('📋 Ustaw kanał logów moderacji')
     .addChannelOption(o => o.setName('kanal').setDescription('Kanał logów').setRequired(true)),

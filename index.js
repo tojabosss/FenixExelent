@@ -19,6 +19,14 @@ const {
 require('dotenv').config();
 const express = require('express');
 const axios   = require('axios');
+
+let Tesseract = null;
+try {
+  Tesseract = require('tesseract.js');
+} catch (err) {
+  console.warn('⚠️ OCR AntiScam wyłączony: brakuje paczki tesseract.js. Uruchom npm install.');
+}
+
 const session = require('express-session');
 const path    = require('path');
 const fs = require('fs');
@@ -82,9 +90,16 @@ function defaultGuildConfig() {
       logChannel: null,
       // Blokuje podejrzane obrazki/screeny scam.
       blockScamImages: true,
-      // Tryb ostry: blokuje też same obrazki bez tekstu poza kanałami zgłoszeń scam.
-      // Bez OCR bot nie potrafi przeczytać tekstu ze screena, więc to zabezpieczenie jest celowo agresywne.
-      blockImageOnlyScamScreenshots: true,
+      // OCR czyta tekst ze screenów i wykrywa np. USDT, Withdrawal Success, promo code, casino.
+      ocrScamImages: true,
+      ocrMinScamScore: 3,
+      ocrMaxImages: 2,
+      ocrTimeoutMs: 25000,
+      ocrMaxImageBytes: 8 * 1024 * 1024,
+      // Kanały zgłoszeń scam mogą przyjmować linki/screeny bez karania zgłaszających.
+      allowScamReportsInReportChannels: true,
+      // Tryb ostry: blokuje same obrazki bez tekstu poza kanałami zgłoszeń scam, gdy OCR nic nie wykryje.
+      blockImageOnlyScamScreenshots: false,
       whitelistedDomains: [
         'discord.com',
         'discord.gg',
@@ -479,11 +494,15 @@ const CRYPTO_SCAM_TEXT_PATTERNS = [
   /withdrawal\s+success/i,
   /your\s+withdrawal\s+of/i,
   /\bwithdraw(?:al)?\b/i,
-  /\b(?:usdt|tether|crypto|bitcoin|btc|ethereum|eth)\b/i,
-  /\b(?:bonus|promo\s*code|lucky\s*code|claim|reward|receive)\b/i,
-  /\b(?:casino|bet|slots?|gambling)\b/i,
+  /\b(?:usdt|tether|crypto|bitcoin|btc|ethereum|eth|wallet)\b/i,
+  /\b(?:bonus|promo\s*code|lucky\s*code|claim|reward|receive|airdrop|giveaway|prize)\b/i,
+  /\b(?:casino|bet|slots?|gambling|jackpot)\b/i,
   /\$\s?\d{3,}/i,
-  /\b(?:connect\s+wallet|wallet\s+address|enter\s+(?:the\s+)?(?:special\s+)?(?:promo\s+)?code)\b/i
+  /\b\d{3,}\s?(?:usdt|usd|btc|eth)\b/i,
+  /\b(?:connect\s+wallet|wallet\s+address|enter\s+(?:the\s+)?(?:special\s+)?(?:promo\s+)?code)\b/i,
+  /\b(?:register|sign\s*up|deposit)\b.*\b(?:bonus|promo|code|usdt|crypto)\b/i,
+  /\b(?:mr\s*beast|beast\s*games?)\b.*\b(?:casino|bonus|crypto|usdt|withdraw|promo)\b/i,
+  /\b(?:one\s+of\s+my\s+followers|congratulations|you\s+won)\b/i
 ];
 
 const SAFE_DOMAINS = [
@@ -610,8 +629,104 @@ function isScamReportChannel(channel) {
   );
 }
 
-function scanMessageForScam(message, gc) {
+function cleanOcrText(text) {
+  return String(text || '')
+    .replace(/\s+/g, ' ')
+    .replace(/[|{}[\]<>]/g, ' ')
+    .trim();
+}
+
+async function recognizeTextFromImage(att, gc) {
+  if (!Tesseract) {
+    return { text: '', error: 'tesseract.js nie jest zainstalowany' };
+  }
+
+  const maxBytes = gc.antiscam?.ocrMaxImageBytes || (8 * 1024 * 1024);
+  if (att.size && att.size > maxBytes) {
+    return { text: '', error: `obraz jest za duży (${att.size} B)` };
+  }
+
+  const imageUrl = att.url || att.proxyURL;
+  if (!imageUrl) return { text: '', error: 'brak URL obrazka' };
+
+  const timeoutMs = gc.antiscam?.ocrTimeoutMs || 25000;
+
+  try {
+    const result = await Promise.race([
+      Tesseract.recognize(imageUrl, 'eng'),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('OCR timeout')), timeoutMs))
+    ]);
+
+    return {
+      text: cleanOcrText(result?.data?.text || ''),
+      confidence: Math.round(result?.data?.confidence || 0),
+    };
+  } catch (err) {
+    return { text: '', error: err.message || String(err) };
+  }
+}
+
+async function scanImagesWithOcr(message, gc, blockedDomains) {
+  if (!gc.antiscam?.ocrScamImages) return null;
+  if (!hasImageAttachment(message)) return null;
+
+  const images = [...message.attachments.values()]
+    .filter(isImageAttachment)
+    .slice(0, gc.antiscam?.ocrMaxImages || 2);
+
+  for (const att of images) {
+    const ocr = await recognizeTextFromImage(att, gc);
+    const ocrText = ocr.text || '';
+
+    if (!ocrText) {
+      if (ocr.error) console.warn(`OCR skipped/error for ${att.name || att.url}: ${ocr.error}`);
+      continue;
+    }
+
+    const domains = extractDomains(ocrText);
+    const foundDomain = domains.find(domain =>
+      !isSafeDomain(domain) &&
+      (isBlockedDomain(domain, blockedDomains) || isSuspiciousDomain(domain, ocrText))
+    );
+
+    if (foundDomain) {
+      return {
+        type: 'ocr+domain',
+        value: foundDomain,
+        reason: 'OCR wykrył domenę/link scam na screenie.',
+        ocrText,
+        ocrConfidence: ocr.confidence,
+      };
+    }
+
+    const ocrScore = getCryptoScamScore(ocrText);
+    const minScore = gc.antiscam?.ocrMinScamScore || 3;
+
+    if (ocrScore >= minScore) {
+      return {
+        type: 'ocr+scam-image',
+        value: att.name || 'screen scam',
+        reason: `OCR wykrył tekst typowy dla crypto/casino scam na screenie. Score: ${ocrScore}/${minScore}.`,
+        ocrText,
+        ocrConfidence: ocr.confidence,
+      };
+    }
+  }
+
+  return null;
+}
+
+
+async function scanMessageForScam(message, gc) {
   const text = String(message.content || '');
+
+  // Na kanałach zgłoszeń pozwalamy wysyłać scam linki/screeny do analizy,
+  // aby bot nie karał osób zgłaszających oszustwo.
+  const allowReportChannel = gc.antiscam?.allowScamReportsInReportChannels !== false;
+  if (allowReportChannel && isScamReportChannel(message.channel)) {
+    return null;
+  }
+
   const domains = extractDomains(text);
   const blocked = normalizeBlockedDomains([
     ...DEFAULT_BLOCKED_DOMAINS,
@@ -657,8 +772,10 @@ function scanMessageForScam(message, gc) {
       };
     }
 
-    // Bez OCR bot nie czyta tekstu ze screena. Ten tryb usuwa same obrazki bez opisu
-    // poza kanałami zgłoszeń scam, aby blokować reklamowe screeny oszustw.
+    const ocrScam = await scanImagesWithOcr(message, gc, blocked);
+    if (ocrScam) return ocrScam;
+
+    // Fallback bez OCR/po nieudanym OCR. Domyślnie wyłączony, bo może blokować zwykłe obrazki.
     if (
       gc.antiscam?.blockImageOnlyScamScreenshots === true &&
       !text.trim() &&
@@ -667,7 +784,7 @@ function scanMessageForScam(message, gc) {
       return {
         type: 'image-only',
         value: getAttachmentNames(message) || 'obraz bez tekstu',
-        reason: 'Obraz bez opisu został zablokowany w trybie ochrony przed scam screenami.',
+        reason: 'Obraz bez opisu został zablokowany w trybie ostrym ochrony przed scam screenami.',
       };
     }
   }
@@ -682,7 +799,7 @@ client.on('messageCreate', async (message) => {
   const gc = getGuildConfig(message.guild.id);
   if (!gc.antiscam?.enabled) return;
 
-  const scam = scanMessageForScam(message, gc);
+  const scam = await scanMessageForScam(message, gc);
   if (!scam) return;
 
   const found = scam.value;
@@ -738,7 +855,9 @@ client.on('messageCreate', async (message) => {
       { name: 'Typ', value: scam.type, inline: true },
       { name: 'Powód', value: scam.reason, inline: false },
       { name: 'Kanał', value: `<#${message.channel.id}>`, inline: true },
-      { name: 'Treść', value: message.content.slice(0, 500) || 'Brak treści', inline: false }
+      { name: 'Treść', value: message.content.slice(0, 500) || 'Brak treści', inline: false },
+      ...(scam.ocrText ? [{ name: 'OCR tekst', value: String(scam.ocrText).slice(0, 900), inline: false }] : []),
+      ...(scam.ocrConfidence !== undefined ? [{ name: 'OCR confidence', value: `${scam.ocrConfidence}%`, inline: true }] : [])
     ]
   ));
 
@@ -977,7 +1096,7 @@ if (commandName === 'help') {
         .setTitle('🔥 FenixExelent — Panel Pomocy')
         .setDescription('Kompletna lista komend dostępnych na serwerze')
         .addFields(
-          { name: '⚙️ Konfiguracja',   value: '`setup` `security` `status` `dashboard` `stats` `refreshbot`',                                 inline: false },
+          { name: '⚙️ Konfiguracja',   value: '`setup` `security` `status` `dashboard` `stats` `refreshbot` `ocrscan`',                                 inline: false },
           { name: '🚫 AntiSpam',        value: '`antispam on` `antispam off` `antispam set` `antispam log`',                                    inline: true  },
           { name: '🚨 AntiRaid',        value: '`antiraid on` `antiraid off` `antiraid set` `antiraid lockdown` `antiraid log`',                inline: true  },
           { name: '🔒 Channel Guard',   value: '`channelguard on` `channelguard off` `channelguard whitelist` `channelguard log`',              inline: true  },
@@ -1208,6 +1327,63 @@ if (commandName === 'help') {
     }
   }
 
+
+
+  // ── ocrscan ───────────────────────────────────────────────────────────
+  if (commandName === 'ocrscan') {
+    if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
+      return interaction.reply({
+        content: '❌ Potrzebujesz uprawnienia Zarządzanie serwerem, aby zmieniać OCR AntiScam.',
+        ephemeral: true,
+      });
+    }
+
+    const sub = interaction.options.getSubcommand();
+    if (!gc.antiscam) gc.antiscam = defaultGuildConfig().antiscam;
+
+    if (sub === 'on') {
+      gc.antiscam.blockScamImages = true;
+      gc.antiscam.ocrScamImages = true;
+      saveConfig();
+      return interaction.reply({ embeds: [embed('#2ed573', '✅ OCR AntiScam włączony', 'Bot będzie czytał tekst ze screenów i blokował obrazy scam/crypto/casino.')], ephemeral: true });
+    }
+
+    if (sub === 'off') {
+      gc.antiscam.ocrScamImages = false;
+      saveConfig();
+      return interaction.reply({ embeds: [embed('#ff4757', '❌ OCR AntiScam wyłączony', 'Bot nadal blokuje domeny/linki, ale nie czyta tekstu ze screenów.')], ephemeral: true });
+    }
+
+    if (sub === 'strict') {
+      const aktywny = interaction.options.getBoolean('aktywny');
+      gc.antiscam.blockImageOnlyScamScreenshots = aktywny;
+      saveConfig();
+      return interaction.reply({ embeds: [embed(
+        aktywny ? '#ff4757' : '#2ed573',
+        aktywny ? '⚠️ Tryb ostry włączony' : '✅ Tryb ostry wyłączony',
+        aktywny
+          ? 'Bot będzie blokował też same obrazki bez tekstu poza kanałami zgłoszeń scam.'
+          : 'Bot będzie karał obrazki głównie wtedy, gdy OCR lub opis wykryje scam.'
+      )], ephemeral: true });
+    }
+
+    if (sub === 'status') {
+      return interaction.reply({ embeds: [embed(
+        '#ff6b00',
+        '👁️ Status OCR AntiScam',
+        'Aktualne ustawienia skanowania screenów.',
+        [
+          { name: 'OCR screenów', value: gc.antiscam.ocrScamImages ? '✅ Włączony' : '❌ Wyłączony', inline: true },
+          { name: 'Tryb ostry', value: gc.antiscam.blockImageOnlyScamScreenshots ? '✅ Włączony' : '❌ Wyłączony', inline: true },
+          { name: 'Min score', value: `${gc.antiscam.ocrMinScamScore || 3}`, inline: true },
+          { name: 'Max obrazów', value: `${gc.antiscam.ocrMaxImages || 2}`, inline: true },
+          { name: 'Timeout', value: `${gc.antiscam.ocrTimeoutMs || 25000} ms`, inline: true },
+          { name: 'Tesseract', value: Tesseract ? '✅ Załadowany' : '❌ Brak paczki', inline: true },
+        ]
+      )], ephemeral: true });
+    }
+  }
+
   // ── modlog ────────────────────────────────────────────────────────────
   if (commandName === 'modlog') {
     const ch = interaction.options.getChannel('kanal');
@@ -1246,7 +1422,13 @@ if (commandName === 'help') {
         deleteMessage: true,
         logChannel: null,
         blockScamImages: true,
-        blockImageOnlyScamScreenshots: true,
+        ocrScamImages: true,
+        ocrMinScamScore: 3,
+        ocrMaxImages: 2,
+        ocrTimeoutMs: 25000,
+        ocrMaxImageBytes: 8 * 1024 * 1024,
+        allowScamReportsInReportChannels: true,
+        blockImageOnlyScamScreenshots: false,
         whitelistedDomains: [],
         blockedDomains: [...DEFAULT_BLOCKED_DOMAINS],
         stats: { detected: 0, deleted: 0, muted: 0 },
@@ -1970,6 +2152,7 @@ Check the \`komendy\` channel.`
         '`/status` — status modułów',
         '`/stats` — odśwież statystyki',
         '`/refreshbot` — odśwież bota na wszystkich serwerach',
+        '`/ocrscan on/off/status/strict` — OCR skan scam screenów',
         '`/antispam on/off/set/log`',
         '`/antiraid on/off/set/lockdown/log`',
         '`/channelguard on/off/whitelist/log`',
@@ -1990,6 +2173,7 @@ Check the \`komendy\` channel.`
         '`/status` — module status',
         '`/stats` — refresh stats',
         '`/refreshbot` — refresh bot on all servers',
+        '`/ocrscan on/off/status/strict` — OCR scam screenshot scan',
         '`/antispam on/off/set/log`',
         '`/antiraid on/off/set/lockdown/log`',
         '`/channelguard on/off/whitelist/log`',
