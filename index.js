@@ -466,7 +466,10 @@ async function enableEmergencyMode(guild, gc) {
   gc.antiscam.blockImageOnlyScamScreenshots = true;
 
   const lockdown = await setGuildEmergencyLockdown(guild, true);
-  const invites = await deleteGuildInvites(guild);
+
+  // Bezpieczna wersja: Emergency Mode NIE usuwa zaproszeń.
+  // Usuwanie invite linków potrafi zaskoczyć właścicieli serwerów i nie da się ich automatycznie odtworzyć.
+  const invites = { deleted: 0, failed: 0, skipped: true };
 
   saveConfig();
   return { lockdown, invites };
@@ -489,6 +492,110 @@ async function disableEmergencyMode(guild, gc) {
   const lockdown = await setGuildEmergencyLockdown(guild, false);
   saveConfig();
   return { lockdown };
+}
+
+
+async function ensureVerificationForAntiAlt(guild, gc) {
+  if (!gc.verification) {
+    gc.verification = { enabled: false, roleId: null, unverifiedRoleId: null, channelId: null };
+  }
+
+  let createdSomething = false;
+
+  let verifiedRole = gc.verification.roleId
+    ? guild.roles.cache.get(gc.verification.roleId)
+    : null;
+
+  if (!verifiedRole) {
+    verifiedRole = guild.roles.cache.find(r => r.name.toLowerCase() === 'zweryfikowany' || r.name.toLowerCase() === 'verified');
+  }
+
+  if (!verifiedRole) {
+    verifiedRole = await guild.roles.create({
+      name: 'Zweryfikowany',
+      color: '#22c55e',
+      reason: 'FenixExelent AntiAlt: automatyczny setup roli weryfikacji',
+    }).catch(() => null);
+    if (verifiedRole) createdSomething = true;
+  }
+
+  let unverifiedRole = gc.verification.unverifiedRoleId
+    ? guild.roles.cache.get(gc.verification.unverifiedRoleId)
+    : null;
+
+  if (!unverifiedRole) {
+    unverifiedRole = guild.roles.cache.find(r => r.name.toLowerCase() === 'niezweryfikowany' || r.name.toLowerCase() === 'unverified');
+  }
+
+  if (!unverifiedRole) {
+    unverifiedRole = await guild.roles.create({
+      name: 'Niezweryfikowany',
+      color: '#747d8c',
+      reason: 'FenixExelent AntiAlt: automatyczny setup roli przed weryfikacją',
+    }).catch(() => null);
+    if (unverifiedRole) createdSomething = true;
+  }
+
+  if (verifiedRole) gc.verification.roleId = verifiedRole.id;
+  if (unverifiedRole) gc.verification.unverifiedRoleId = unverifiedRole.id;
+  gc.verification.enabled = true;
+
+  let verifyChannel = gc.verification.channelId
+    ? guild.channels.cache.get(gc.verification.channelId)
+    : null;
+
+  if (!verifyChannel) {
+    const category = await getOrCreateCategory(guild, '🔐 WERYFIKACJA').catch(() => null);
+    verifyChannel = guild.channels.cache.find(ch =>
+      ch.type === ChannelType.GuildText &&
+      ['✅│weryfikacja', 'weryfikacja', 'verification'].includes(String(ch.name || '').toLowerCase())
+    );
+
+    if (!verifyChannel) {
+      verifyChannel = await guild.channels.create({
+        name: '✅│weryfikacja',
+        type: ChannelType.GuildText,
+        parent: category?.id || null,
+        reason: 'FenixExelent AntiAlt: automatyczny kanał weryfikacji',
+      }).catch(() => null);
+      if (verifyChannel) createdSomething = true;
+    }
+
+    if (verifyChannel) gc.verification.channelId = verifyChannel.id;
+  }
+
+  if (unverifiedRole) {
+    await guild.channels.fetch().catch(() => {});
+    for (const [, ch] of guild.channels.cache) {
+      if (![ChannelType.GuildText, ChannelType.GuildVoice, ChannelType.GuildCategory].includes(ch.type)) continue;
+
+      if (verifyChannel && ch.id === verifyChannel.id) {
+        await ch.permissionOverwrites.edit(unverifiedRole, {
+          ViewChannel: true,
+          ReadMessageHistory: true,
+          SendMessages: true,
+        }).catch(() => {});
+      } else {
+        await ch.permissionOverwrites.edit(unverifiedRole, {
+          ViewChannel: false,
+        }).catch(() => {});
+      }
+    }
+  }
+
+  if (verifyChannel && createdSomething) {
+    await sendVerifyPanel(verifyChannel).catch(() => {});
+  }
+
+  saveConfig();
+
+  return {
+    ok: !!(verifiedRole && unverifiedRole && verifyChannel),
+    verifiedRole,
+    unverifiedRole,
+    verifyChannel,
+    createdSomething,
+  };
 }
 
 async function maybeHandleAntiAlt(member) {
@@ -691,7 +798,7 @@ function calculateServerSecurityScore(gc) {
   add('Logi AntiScam ustawione', !!gc.antiscam?.logChannel, 8);
   add('Tryb awaryjny dostępny', !!gc.emergency, 5);
   add('System zgłoszeń/appeali gotowy', !!gc.appeals, 5);
-  add('Ignorowane kanały/role skonfigurowane', (gc.securityIgnore?.channels?.length || gc.securityIgnore?.roles?.length || isScamReportChannel({ name: 'zgłoszenia-scam' })), 5);
+  add('Ignorowane kanały/role skonfigurowane', !!(gc.securityIgnore?.channels?.length || gc.securityIgnore?.roles?.length), 5);
 
   const score = Math.min(100, checks.reduce((sum, c) => sum + (c.ok ? c.points : 0), 0));
   return { score, checks };
@@ -1091,6 +1198,12 @@ function isSafeDomain(domain) {
   return SAFE_DOMAINS.some(safe => clean === safe || clean.endsWith(`.${safe}`));
 }
 
+function isWhitelistedDomain(domain, gc = null) {
+  const clean = normalizeDomainInput(domain);
+  const extra = normalizeBlockedDomains(gc?.antiscam?.whitelistedDomains || []);
+  return isSafeDomain(clean) || extra.some(safe => domainMatches(clean, safe));
+}
+
 function getCryptoScamScore(text = '') {
   const value = String(text || '');
   return CRYPTO_SCAM_TEXT_PATTERNS.reduce((score, pattern) => {
@@ -1252,7 +1365,7 @@ async function scanImagesWithOcr(message, gc, blockedDomains) {
 
     const domains = extractDomains(ocrText);
     const foundDomain = domains.find(domain =>
-      !isSafeDomain(domain) &&
+      !isWhitelistedDomain(domain, gc) &&
       (isBlockedDomain(domain, blockedDomains) || isSuspiciousDomain(domain, ocrText))
     );
 
@@ -1303,7 +1416,7 @@ async function scanMessageForScam(message, gc) {
   if (gc.antiscam) gc.antiscam.blockedDomains = blocked;
 
   const foundDomain = domains.find(domain =>
-    !isSafeDomain(domain) &&
+    !isWhitelistedDomain(domain, gc) &&
     (isBlockedDomain(domain, blocked) || isSuspiciousDomain(domain, text))
   );
 
@@ -1320,7 +1433,7 @@ async function scanMessageForScam(message, gc) {
   const scamScore = getCryptoScamScore(text);
 
   if (domains.length && scamScore >= 3) {
-    const nonTrusted = domains.find(domain => !isSafeDomain(domain));
+    const nonTrusted = domains.find(domain => !isWhitelistedDomain(domain, gc));
     if (nonTrusted) {
       return {
         type: 'text+domain',
@@ -1863,9 +1976,25 @@ if (commandName === 'help') {
     if (!gc.antialt) gc.antialt = { enabled: false, minAccountAgeDays: 7, action: 'verify', logChannel: null, riskPoints: 20 };
 
     if (sub === 'on') {
+      await interaction.deferReply({ ephemeral: true });
+
+      const setup = await ensureVerificationForAntiAlt(interaction.guild, gc);
       gc.antialt.enabled = true;
       saveConfig();
-      return interaction.reply({ embeds: [embed('#2ed573', '✅ AntiAlt włączony', `Nowe konta młodsze niż **${gc.antialt.minAccountAgeDays || 7} dni** będą oznaczane do dodatkowej weryfikacji.`)], ephemeral: true });
+
+      return interaction.editReply({ embeds: [embed(
+        setup.ok ? '#2ed573' : '#ffa502',
+        setup.ok ? '✅ AntiAlt włączony' : '⚠️ AntiAlt włączony, ale sprawdź uprawnienia',
+        `Nowe konta młodsze niż **${gc.antialt.minAccountAgeDays || 7} dni** będą oznaczane do dodatkowej weryfikacji.\n\n` +
+        (setup.ok
+          ? `Weryfikacja gotowa: ${setup.verifyChannel ? `<#${setup.verifyChannel.id}>` : 'kanał weryfikacji'}`
+          : 'Nie udało się w pełni utworzyć roli/kanału weryfikacji. Sprawdź uprawnienia bota.'),
+        [
+          { name: 'Rola po weryfikacji', value: setup.verifiedRole ? `<@&${setup.verifiedRole.id}>` : 'Brak', inline: true },
+          { name: 'Rola przed weryfikacją', value: setup.unverifiedRole ? `<@&${setup.unverifiedRole.id}>` : 'Brak', inline: true },
+          { name: 'Kanał', value: setup.verifyChannel ? `<#${setup.verifyChannel.id}>` : 'Brak', inline: true },
+        ]
+      )] });
     }
 
     if (sub === 'off') {
@@ -2149,11 +2278,11 @@ if (commandName === 'help') {
       const result = await enableEmergencyMode(interaction.guild, gc);
       await sendLog(interaction.guild, getBestLogChannelId(gc), embed('#ff4757', '🚨 Emergency Mode ON', `${interaction.user.tag} włączył tryb awaryjny.`, [
         { name: 'Lockdown', value: `${result.lockdown.changed} zmian / ${result.lockdown.failed} błędów`, inline: true },
-        { name: 'Zaproszenia usunięte', value: `${result.invites.deleted}`, inline: true },
+        { name: 'Zaproszenia', value: result.invites?.skipped ? '✅ Zachowane' : `${result.invites.deleted} usunięte`, inline: true },
       ]));
-      return interaction.editReply({ embeds: [embed('#ff4757', '🚨 Emergency Mode włączony', 'Serwer został zabezpieczony: lockdown, usunięcie zaproszeń, mocniejszy AntiSpam/AntiRaid/AntiScam.', [
+      return interaction.editReply({ embeds: [embed('#ff4757', '🚨 Emergency Mode włączony', 'Serwer został zabezpieczony: lockdown oraz mocniejszy AntiSpam/AntiRaid/AntiScam. Zaproszenia nie są usuwane.', [
         { name: 'Lockdown', value: `${result.lockdown.changed} kanałów`, inline: true },
-        { name: 'Zaproszenia usunięte', value: `${result.invites.deleted}`, inline: true },
+        { name: 'Zaproszenia', value: result.invites?.skipped ? '✅ Zachowane' : `${result.invites.deleted} usunięte`, inline: true },
         { name: 'OCR/AntiScam', value: '✅ Tryb ostry', inline: true },
       ])] });
     }
@@ -2361,6 +2490,54 @@ if (commandName === 'help') {
       saveConfig();
       return interaction.reply({
         embeds: [embed('#ff4757', '❌ AntiScam wyłączony', 'Ochrona przed scam linkami została wyłączona.')],
+        ephemeral: true,
+      });
+    }
+
+    if (sub === 'set') {
+      const mute = interaction.options.getInteger('mute');
+      const del = interaction.options.getBoolean('delete');
+
+      if (mute !== null) gc.antiscam.muteMinutes = mute;
+      if (del !== null) gc.antiscam.deleteMessage = del;
+
+      saveConfig();
+
+      return interaction.reply({
+        embeds: [embed(
+          '#2ed573',
+          '✅ AntiScam zaktualizowany',
+          `Mute: **${gc.antiscam.muteMinutes || 60} min**\nUsuwanie wiadomości: **${gc.antiscam.deleteMessage ? 'Tak' : 'Nie'}**`
+        )],
+        ephemeral: true,
+      });
+    }
+
+    if (sub === 'whitelist') {
+      const input = interaction.options.getString('domena');
+      const domains = normalizeBlockedDomains([input]);
+
+      if (!gc.antiscam.whitelistedDomains) gc.antiscam.whitelistedDomains = [];
+
+      let added = 0;
+      for (const domain of domains) {
+        if (!gc.antiscam.whitelistedDomains.includes(domain)) {
+          gc.antiscam.whitelistedDomains.push(domain);
+          added++;
+        }
+      }
+
+      gc.antiscam.whitelistedDomains = normalizeBlockedDomains(gc.antiscam.whitelistedDomains);
+      saveConfig();
+
+      return interaction.reply({
+        embeds: [embed(
+          '#2ed573',
+          '✅ Domena dodana do whitelisty AntiScam',
+          added
+            ? domains.map(d => `• \`${d}\``).join('\n')
+            : 'Nie dodano nowej domeny. Ta domena mogła już być na whitelist.'
+        )],
         ephemeral: true,
       });
     }
