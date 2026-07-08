@@ -115,6 +115,25 @@ function defaultGuildConfig() {
       stats: { detected: 0, deleted: 0, muted: 0 },
       riskScores: {},
     },
+    antialt: {
+      enabled: false,
+      minAccountAgeDays: 7,
+      action: 'verify',
+      logChannel: null,
+      riskPoints: 20,
+    },
+    emergency: {
+      active: false,
+      previous: null,
+    },
+    securityStats: {
+      scamsBlocked: 0,
+      spamMuted: 0,
+      raidsDetected: 0,
+      altDetections: 0,
+      reportsCreated: 0,
+      emergencyActivations: 0,
+    },
     channelGuard: {
       enabled: false, blockNewChannels: false,
       whitelistedRoles: [], logChannel: null,
@@ -164,6 +183,9 @@ const client = new Client({
 const spamMap    = new Map(); // userId -> timestamp[]
 const mutedUsers = new Set(); // userId
 const joinMap    = new Map(); // guildId -> timestamp[]
+const recentJoinMap = new Map(); // guildId:userId -> timestamp
+const fastJoinRiskGiven = new Set(); // guildId:userId
+const scamReports = new Map(); // reportId -> report data
 
 // ─── HELPERS ───────────────────────────────────────────────────────────────
 function embed(color, title, desc, fields = []) {
@@ -198,6 +220,306 @@ async function sendModLog(guild, action, target, mod, reason, color = '#ff6b00')
       { name: 'Powód',      value: reason || 'Brak',                                   inline: false },
     ]
   ));
+}
+
+
+function ensureSecurityStats(gc) {
+  if (!gc.securityStats) gc.securityStats = {};
+  gc.securityStats = Object.assign({
+    scamsBlocked: 0,
+    spamMuted: 0,
+    raidsDetected: 0,
+    altDetections: 0,
+    reportsCreated: 0,
+    emergencyActivations: 0,
+  }, gc.securityStats);
+  return gc.securityStats;
+}
+
+function ensureRiskScores(gc) {
+  if (!gc.antiscam) gc.antiscam = {};
+  if (!gc.antiscam.riskScores) gc.antiscam.riskScores = {};
+  return gc.antiscam.riskScores;
+}
+
+function getUserRiskData(gc, userId) {
+  const scores = ensureRiskScores(gc);
+  const current = scores[userId];
+
+  if (!current || typeof current === 'number') {
+    scores[userId] = {
+      score: typeof current === 'number' ? current : 0,
+      events: [],
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  if (!Array.isArray(scores[userId].events)) scores[userId].events = [];
+  if (typeof scores[userId].score !== 'number') scores[userId].score = 0;
+
+  return scores[userId];
+}
+
+function getRiskLevel(score) {
+  if (score >= 80) return { label: '🔴 Krytyczny', color: '#ff0000' };
+  if (score >= 50) return { label: '🟠 Wysoki', color: '#ff6b00' };
+  if (score >= 20) return { label: '🟡 Podejrzany', color: '#f59e0b' };
+  return { label: '🟢 Normalny', color: '#2ed573' };
+}
+
+function addRisk(gc, userId, points, reason, meta = {}) {
+  if (!userId || !points) return null;
+
+  const data = getUserRiskData(gc, userId);
+  data.score = Math.max(0, Math.min(100, data.score + points));
+  data.updatedAt = new Date().toISOString();
+  data.events.unshift({
+    points,
+    reason,
+    date: data.updatedAt,
+    ...meta,
+  });
+  data.events = data.events.slice(0, 15);
+
+  return data;
+}
+
+function getBestLogChannelId(gc) {
+  return gc.antiscam?.logChannel || gc.modLog?.channelId || gc.antiraid?.logChannel || gc.antispam?.logChannel || null;
+}
+
+function isStaffMember(member, gc) {
+  if (!member) return false;
+  if (member.permissions.has(PermissionFlagsBits.Administrator)) return true;
+  if (member.permissions.has(PermissionFlagsBits.ManageGuild)) return true;
+  if (member.permissions.has(PermissionFlagsBits.ManageMessages)) return true;
+  if (member.permissions.has(PermissionFlagsBits.BanMembers)) return true;
+  if (member.permissions.has(PermissionFlagsBits.ModerateMembers)) return true;
+  if (gc.adminRole && member.roles.cache.has(gc.adminRole)) return true;
+  if (gc.modRole && member.roles.cache.has(gc.modRole)) return true;
+  if (gc.tickets?.supportRoleId && member.roles.cache.has(gc.tickets.supportRoleId)) return true;
+  return false;
+}
+
+function requireSecurityPermission(interaction, gc) {
+  if (isStaffMember(interaction.member, gc)) return null;
+  return interaction.reply({ content: '❌ Brak uprawnień do tej komendy.', ephemeral: true });
+}
+
+function getAccountAgeDays(user) {
+  const created = user?.createdTimestamp || 0;
+  if (!created) return 9999;
+  return Math.floor((Date.now() - created) / (24 * 60 * 60 * 1000));
+}
+
+function makeReportId() {
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function buildScamReportButtons(reportId) {
+  return [new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`scamreport:block:${reportId}`)
+      .setLabel('✅ Dodaj domenę')
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(`scamreport:mute:${reportId}`)
+      .setLabel('🔇 Mute')
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(`scamreport:ban:${reportId}`)
+      .setLabel('🔨 Ban')
+      .setStyle(ButtonStyle.Danger),
+    new ButtonBuilder()
+      .setCustomId(`scamreport:reject:${reportId}`)
+      .setLabel('❌ Odrzuć')
+      .setStyle(ButtonStyle.Secondary),
+  )];
+}
+
+function buildDisabledScamReportButtons(reportId) {
+  return [new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`scamreport:block:${reportId}`).setLabel('✅ Dodaj domenę').setStyle(ButtonStyle.Success).setDisabled(true),
+    new ButtonBuilder().setCustomId(`scamreport:mute:${reportId}`).setLabel('🔇 Mute').setStyle(ButtonStyle.Secondary).setDisabled(true),
+    new ButtonBuilder().setCustomId(`scamreport:ban:${reportId}`).setLabel('🔨 Ban').setStyle(ButtonStyle.Danger).setDisabled(true),
+    new ButtonBuilder().setCustomId(`scamreport:reject:${reportId}`).setLabel('❌ Odrzuć').setStyle(ButtonStyle.Secondary).setDisabled(true),
+  )];
+}
+
+function getFirstDomainFromText(text) {
+  const domains = extractDomains(String(text || ''));
+  return domains.find(d => !isSafeDomain(d)) || domains[0] || null;
+}
+
+function formatUptime(seconds) {
+  const s = Math.max(0, Number(seconds || 0));
+  const days = Math.floor(s / 86400);
+  const hours = Math.floor((s % 86400) / 3600);
+  const minutes = Math.floor((s % 3600) / 60);
+  if (days) return `${days}d ${hours}h ${minutes}m`;
+  if (hours) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
+function aggregateSecurityStats() {
+  const totals = {
+    scamsBlocked: 0,
+    spamMuted: 0,
+    raidsDetected: 0,
+    altDetections: 0,
+    reportsCreated: 0,
+    emergencyActivations: 0,
+  };
+
+  for (const guildId of Object.keys(config.guilds || {})) {
+    const gc = getGuildConfig(guildId);
+    const stats = ensureSecurityStats(gc);
+    totals.scamsBlocked += Number(stats.scamsBlocked || 0);
+    totals.spamMuted += Number(stats.spamMuted || 0);
+    totals.raidsDetected += Number(stats.raidsDetected || 0);
+    totals.altDetections += Number(stats.altDetections || 0);
+    totals.reportsCreated += Number(stats.reportsCreated || 0);
+    totals.emergencyActivations += Number(stats.emergencyActivations || 0);
+  }
+
+  return totals;
+}
+
+async function setGuildEmergencyLockdown(guild, active) {
+  let changed = 0;
+  let failed = 0;
+
+  for (const [, ch] of guild.channels.cache) {
+    if (ch.type === ChannelType.GuildText || ch.type === ChannelType.GuildVoice || ch.type === ChannelType.GuildCategory) {
+      await ch.permissionOverwrites.edit(guild.roles.everyone, {
+        SendMessages: active ? false : null,
+        CreateInstantInvite: active ? false : null,
+      }).then(() => { changed++; }).catch(() => { failed++; });
+    }
+  }
+
+  return { changed, failed };
+}
+
+async function deleteGuildInvites(guild) {
+  let deleted = 0;
+  let failed = 0;
+
+  try {
+    const invites = await guild.invites.fetch();
+    for (const [, invite] of invites) {
+      await invite.delete('FenixExelent Emergency Mode').then(() => { deleted++; }).catch(() => { failed++; });
+    }
+  } catch {
+    failed++;
+  }
+
+  return { deleted, failed };
+}
+
+async function enableEmergencyMode(guild, gc) {
+  ensureSecurityStats(gc);
+  await guild.channels.fetch().catch(() => {});
+
+  if (!gc.emergency) gc.emergency = {};
+  if (!gc.emergency.active) {
+    gc.emergency.previous = {
+      antispam: { ...gc.antispam },
+      antiraid: { ...gc.antiraid },
+      antiscam: { ...gc.antiscam },
+    };
+  }
+
+  gc.emergency.active = true;
+  gc.securityStats.emergencyActivations++;
+
+  gc.antispam.enabled = true;
+  gc.antispam.maxMessages = Math.min(gc.antispam.maxMessages || 5, 3);
+  gc.antispam.interval = Math.min(gc.antispam.interval || 3000, 2500);
+  gc.antispam.muteMinutes = Math.max(gc.antispam.muteMinutes || 10, 30);
+
+  gc.antiraid.enabled = true;
+  gc.antiraid.lockdownActive = true;
+  gc.antiraid.joinThreshold = Math.min(gc.antiraid.joinThreshold || 10, 5);
+  gc.antiraid.joinInterval = Math.min(gc.antiraid.joinInterval || 10000, 10000);
+
+  gc.antiscam.enabled = true;
+  gc.antiscam.deleteMessage = true;
+  gc.antiscam.blockScamImages = true;
+  gc.antiscam.ocrScamImages = true;
+  gc.antiscam.blockImageOnlyScamScreenshots = true;
+
+  const lockdown = await setGuildEmergencyLockdown(guild, true);
+  const invites = await deleteGuildInvites(guild);
+
+  saveConfig();
+  return { lockdown, invites };
+}
+
+async function disableEmergencyMode(guild, gc) {
+  await guild.channels.fetch().catch(() => {});
+
+  if (gc.emergency?.previous) {
+    if (gc.emergency.previous.antispam) gc.antispam = Object.assign(gc.antispam, gc.emergency.previous.antispam);
+    if (gc.emergency.previous.antiraid) gc.antiraid = Object.assign(gc.antiraid, gc.emergency.previous.antiraid);
+    if (gc.emergency.previous.antiscam) gc.antiscam = Object.assign(gc.antiscam, gc.emergency.previous.antiscam);
+  }
+
+  if (!gc.emergency) gc.emergency = {};
+  gc.emergency.active = false;
+  gc.emergency.previous = null;
+  if (gc.antiraid) gc.antiraid.lockdownActive = false;
+
+  const lockdown = await setGuildEmergencyLockdown(guild, false);
+  saveConfig();
+  return { lockdown };
+}
+
+async function maybeHandleAntiAlt(member) {
+  const gc = getGuildConfig(member.guild.id);
+  if (!gc.antialt?.enabled) return;
+
+  const minDays = Number(gc.antialt.minAccountAgeDays || 7);
+  const ageDays = getAccountAgeDays(member.user);
+  if (ageDays >= minDays) return;
+
+  ensureSecurityStats(gc).altDetections++;
+  addRisk(gc, member.id, Number(gc.antialt.riskPoints || 20), `Nowe konto Discord: ${ageDays}/${minDays} dni`, { type: 'antialt' });
+  saveConfig();
+
+  if (gc.verification?.unverifiedRoleId) {
+    await member.roles.add(gc.verification.unverifiedRoleId, 'FenixExelent AntiAlt: nowe konto').catch(() => {});
+  }
+
+  await sendLog(member.guild, gc.antialt.logChannel || getBestLogChannelId(gc), embed(
+    '#ffa502',
+    '🆕 AntiAlt — nowe konto',
+    `<@${member.id}> ma konto młodsze niż wymagany limit i wymaga dodatkowej weryfikacji.`,
+    [
+      { name: 'Użytkownik', value: `${member.user.tag} (${member.id})`, inline: true },
+      { name: 'Wiek konta', value: `${ageDays} dni`, inline: true },
+      { name: 'Minimum', value: `${minDays} dni`, inline: true },
+      { name: 'Risk +', value: `${gc.antialt.riskPoints || 20}`, inline: true },
+    ]
+  ));
+}
+
+function markRecentJoin(member) {
+  recentJoinMap.set(`${member.guild.id}:${member.id}`, Date.now());
+  setTimeout(() => recentJoinMap.delete(`${member.guild.id}:${member.id}`), 15 * 60 * 1000);
+}
+
+function maybeAddFastJoinRisk(message, gc) {
+  const key = `${message.guild.id}:${message.author.id}`;
+  const joinedAt = recentJoinMap.get(key);
+  if (!joinedAt || fastJoinRiskGiven.has(key)) return;
+
+  if (Date.now() - joinedAt <= 5 * 60 * 1000) {
+    fastJoinRiskGiven.add(key);
+    addRisk(gc, message.author.id, 5, 'Szybkie pisanie zaraz po dołączeniu do serwera', { type: 'fast-join-message' });
+    saveConfig();
+    setTimeout(() => fastJoinRiskGiven.delete(key), 60 * 60 * 1000);
+  }
 }
 
 async function getOrCreateCategory(guild, name) {
@@ -288,6 +610,13 @@ client.on('guildDelete', async (guild) => {
 setInterval(() => {
   updateBotPresence();
 }, 5 * 60 * 1000);
+
+
+client.on('messageCreate', async (message) => {
+  if (!message.guild || message.author.bot) return;
+  const gc = getGuildConfig(message.guild.id);
+  maybeAddFastJoinRisk(message, gc);
+});
 
 // ─── ANTISCAM ──────────────────────────────────────────────────────────────
 function extractDomains(text) {
@@ -818,6 +1147,9 @@ client.on('messageCreate', async (message) => {
 
   gc.antiscam.stats.detected++;
   if (gc.antiscam.deleteMessage) gc.antiscam.stats.deleted++;
+  ensureSecurityStats(gc).scamsBlocked++;
+  const riskPoints = scam.type === 'ocr+scam-image' ? 35 : scam.type === 'image-only' ? 15 : 30;
+  const riskData = addRisk(gc, message.author.id, riskPoints, `AntiScam: ${scam.reason}`, { type: scam.type, value: String(found).slice(0, 120) });
 
   try {
     await member.timeout(
@@ -838,7 +1170,8 @@ client.on('messageCreate', async (message) => {
         { name: 'Wykryto', value: `\`${String(found).slice(0, 180)}\``, inline: true },
         { name: 'Typ', value: scam.type, inline: true },
         { name: 'Powód', value: scam.reason, inline: false },
-        { name: 'Mute', value: `${gc.antiscam.muteMinutes || 60} min`, inline: true }
+        { name: 'Mute', value: `${gc.antiscam.muteMinutes || 60} min`, inline: true },
+        ...(riskData ? [{ name: 'Risk Score', value: `${riskData.score}/100`, inline: true }] : [])
       ]
     )]
   }).then(msg => {
@@ -893,6 +1226,9 @@ client.on('messageCreate', async (message) => {
       if (!member) return;
 
       await member.timeout(muteMinutes * 60 * 1000, 'FenixExelent AntiSpam');
+      ensureSecurityStats(gc).spamMuted++;
+      addRisk(gc, uid, 10, `AntiSpam: ${timestamps.length}/${maxMessages} wiadomości`, { type: 'antispam' });
+      saveConfig();
 
       // Usuń ostatnie wiadomości spamera
       try {
@@ -925,6 +1261,8 @@ client.on('messageCreate', async (message) => {
 // ─── WELCOME + ANTIRAID ────────────────────────────────────────────────────
 client.on('guildMemberAdd', async (member) => {
   const gc = getGuildConfig(member.guild.id);
+  markRecentJoin(member);
+  await maybeHandleAntiAlt(member).catch(err => console.error('AntiAlt error:', err));
 
   // Nadaj rolę Niezweryfikowany nowym osobom
   if (gc.verification?.enabled && gc.verification?.unverifiedRoleId) {
@@ -967,6 +1305,10 @@ client.on('guildMemberAdd', async (member) => {
   joinMap.set(gid, joins);
 
   if (joins.length >= joinThreshold) {
+    ensureSecurityStats(gc).raidsDetected++;
+    addRisk(gc, member.id, 15, `AntiRaid: masowe dołączenia ${joins.length}/${joinThreshold}`, { type: 'antiraid' });
+    saveConfig();
+
     await sendLog(member.guild, logChannel, embed(
       '#ff0000', '🚨 RAID WYKRYTY!',
       `Wykryto masowe dołączenia: ${joins.length} w ciągu ${joinInterval / 1000}s`,
@@ -1096,7 +1438,7 @@ if (commandName === 'help') {
         .setTitle('🔥 FenixExelent — Panel Pomocy')
         .setDescription('Kompletna lista komend dostępnych na serwerze')
         .addFields(
-          { name: '⚙️ Konfiguracja',   value: '`setup` `security` `status` `dashboard` `stats` `refreshbot` `ocrscan`',                                 inline: false },
+          { name: '⚙️ Konfiguracja',   value: '`setup` `security` `status` `dashboard` `stats` `refreshbot` `ocrscan` `antialt` `emergency`',                                 inline: false },
           { name: '🚫 AntiSpam',        value: '`antispam on` `antispam off` `antispam set` `antispam log`',                                    inline: true  },
           { name: '🚨 AntiRaid',        value: '`antiraid on` `antiraid off` `antiraid set` `antiraid lockdown` `antiraid log`',                inline: true  },
           { name: '🔒 Channel Guard',   value: '`channelguard on` `channelguard off` `channelguard whitelist` `channelguard log`',              inline: true  },
@@ -1270,6 +1612,180 @@ if (commandName === 'help') {
     await interaction.deferReply({ ephemeral: true });
     await updateStats(interaction.guild);
     return interaction.editReply({ embeds: [embed('#2ed573', '✅ Statystyki odświeżone', 'Kanały statystyk zostały zaktualizowane.')] });
+  }
+
+  // ── antialt ─────────────────────────────────────────────────────────
+  if (commandName === 'antialt') {
+    const perm = requireSecurityPermission(interaction, gc);
+    if (perm) return perm;
+
+    const sub = interaction.options.getSubcommand();
+    if (!gc.antialt) gc.antialt = { enabled: false, minAccountAgeDays: 7, action: 'verify', logChannel: null, riskPoints: 20 };
+
+    if (sub === 'on') {
+      gc.antialt.enabled = true;
+      saveConfig();
+      return interaction.reply({ embeds: [embed('#2ed573', '✅ AntiAlt włączony', `Nowe konta młodsze niż **${gc.antialt.minAccountAgeDays || 7} dni** będą oznaczane do dodatkowej weryfikacji.`)], ephemeral: true });
+    }
+
+    if (sub === 'off') {
+      gc.antialt.enabled = false;
+      saveConfig();
+      return interaction.reply({ embeds: [embed('#ff4757', '❌ AntiAlt wyłączony', 'Ochrona przed świeżymi kontami została wyłączona.')], ephemeral: true });
+    }
+
+    if (sub === 'set') {
+      const days = interaction.options.getInteger('mindays');
+      const log = interaction.options.getChannel('logi');
+      if (days !== null) gc.antialt.minAccountAgeDays = days;
+      if (log) gc.antialt.logChannel = log.id;
+      saveConfig();
+      return interaction.reply({ embeds: [embed('#2ed573', '✅ AntiAlt zaktualizowany', `Minimum wieku konta: **${gc.antialt.minAccountAgeDays} dni**${gc.antialt.logChannel ? `\nLogi: <#${gc.antialt.logChannel}>` : ''}`)], ephemeral: true });
+    }
+
+    if (sub === 'status') {
+      return interaction.reply({ embeds: [embed('#ff6b00', '🆕 Status AntiAlt', 'Ochrona przed świeżymi kontami.', [
+        { name: 'Status', value: gc.antialt.enabled ? '✅ Włączony' : '❌ Wyłączony', inline: true },
+        { name: 'Min wiek konta', value: `${gc.antialt.minAccountAgeDays || 7} dni`, inline: true },
+        { name: 'Risk +', value: `${gc.antialt.riskPoints || 20}`, inline: true },
+        { name: 'Logi', value: gc.antialt.logChannel ? `<#${gc.antialt.logChannel}>` : 'Auto', inline: true },
+      ])], ephemeral: true });
+    }
+  }
+
+  // ── risk ─────────────────────────────────────────────────────────────
+  if (commandName === 'risk') {
+    const perm = requireSecurityPermission(interaction, gc);
+    if (perm) return perm;
+
+    const user = interaction.options.getUser('uzytkownik') || interaction.user;
+    const data = getUserRiskData(gc, user.id);
+    const level = getRiskLevel(data.score);
+    const events = data.events.length
+      ? data.events.slice(0, 8).map((e, i) => `**${i + 1}.** ${e.points > 0 ? '+' : ''}${e.points} — ${e.reason} (${new Date(e.date).toLocaleString('pl-PL')})`).join('\n')
+      : 'Brak zdarzeń risk.';
+
+    return interaction.reply({ embeds: [embed(
+      level.color,
+      `📊 Risk Score — ${user.tag}`,
+      `Poziom: **${level.label}**\nScore: **${data.score}/100**`,
+      [
+        { name: 'Użytkownik', value: `<@${user.id}>`, inline: true },
+        { name: 'Aktualizacja', value: data.updatedAt ? new Date(data.updatedAt).toLocaleString('pl-PL') : 'Brak', inline: true },
+        { name: 'Ostatnie zdarzenia', value: events.slice(0, 1000), inline: false },
+      ]
+    )], ephemeral: true });
+  }
+
+  // ── reportscam ───────────────────────────────────────────────────────
+  if (commandName === 'reportscam') {
+    const link = interaction.options.getString('link');
+    const user = interaction.options.getUser('uzytkownik');
+    const opis = interaction.options.getString('opis') || 'Brak opisu';
+
+    if (!link && !user) {
+      return interaction.reply({ content: '❌ Podaj link/domenę albo użytkownika do zgłoszenia.', ephemeral: true });
+    }
+
+    const reportId = makeReportId();
+    const domain = getFirstDomainFromText(link || '') || normalizeDomainInput(link || '');
+    const logChannelId = getBestLogChannelId(gc);
+    const logChannel = logChannelId ? await interaction.guild.channels.fetch(logChannelId).catch(() => null) : interaction.channel;
+
+    scamReports.set(reportId, {
+      reportId,
+      guildId: interaction.guild.id,
+      reporterId: interaction.user.id,
+      targetId: user?.id || null,
+      link: link || null,
+      domain: domain && domain.includes('.') ? domain : null,
+      opis,
+      channelId: interaction.channel.id,
+      createdAt: Date.now(),
+    });
+
+    ensureSecurityStats(gc).reportsCreated++;
+    saveConfig();
+
+    const msg = await logChannel.send({
+      embeds: [embed(
+        '#ff6b00',
+        '🚨 Nowe zgłoszenie scam',
+        'Staff może od razu dodać domenę do blacklisty, wyciszyć lub zbanować użytkownika.',
+        [
+          { name: 'Zgłaszający', value: `<@${interaction.user.id}>`, inline: true },
+          { name: 'Podejrzany użytkownik', value: user ? `<@${user.id}>` : 'Nie podano', inline: true },
+          { name: 'Domena/link', value: link ? `\`${String(link).slice(0, 500)}\`` : 'Nie podano', inline: false },
+          { name: 'Wykryta domena', value: domain ? `\`${domain}\`` : 'Brak', inline: true },
+          { name: 'Opis', value: opis.slice(0, 700), inline: false },
+          { name: 'ID zgłoszenia', value: `\`${reportId}\``, inline: true },
+        ]
+      )],
+      components: buildScamReportButtons(reportId),
+    }).catch(() => null);
+
+    return interaction.reply({ content: msg ? `✅ Zgłoszenie scam wysłane do ${logChannel}.` : '✅ Zgłoszenie zapisane, ale nie udało się wysłać na kanał logów.', ephemeral: true });
+  }
+
+  // ── securitystats ────────────────────────────────────────────────────
+  if (commandName === 'securitystats') {
+    const stats = ensureSecurityStats(gc);
+    return interaction.reply({ embeds: [embed('#ff6b00', '🛡️ Statystyki bezpieczeństwa', 'Statystyki tego serwera.', [
+      { name: 'Scamy zablokowane', value: `${stats.scamsBlocked || 0}`, inline: true },
+      { name: 'Spam muty', value: `${stats.spamMuted || 0}`, inline: true },
+      { name: 'Raidy wykryte', value: `${stats.raidsDetected || 0}`, inline: true },
+      { name: 'Nowe konta AntiAlt', value: `${stats.altDetections || 0}`, inline: true },
+      { name: 'Zgłoszenia scam', value: `${stats.reportsCreated || 0}`, inline: true },
+      { name: 'Emergency aktywacje', value: `${stats.emergencyActivations || 0}`, inline: true },
+    ])], ephemeral: true });
+  }
+
+  // ── emergency ────────────────────────────────────────────────────────
+  if (commandName === 'emergency') {
+    if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+      return interaction.reply({ content: '❌ Tylko administrator może użyć Emergency Mode.', ephemeral: true });
+    }
+
+    const sub = interaction.options.getSubcommand();
+    if (!gc.emergency) gc.emergency = { active: false, previous: null };
+
+    if (sub === 'on') {
+      await interaction.deferReply();
+      const result = await enableEmergencyMode(interaction.guild, gc);
+      await sendLog(interaction.guild, getBestLogChannelId(gc), embed('#ff4757', '🚨 Emergency Mode ON', `${interaction.user.tag} włączył tryb awaryjny.`, [
+        { name: 'Lockdown', value: `${result.lockdown.changed} zmian / ${result.lockdown.failed} błędów`, inline: true },
+        { name: 'Zaproszenia usunięte', value: `${result.invites.deleted}`, inline: true },
+      ]));
+      return interaction.editReply({ embeds: [embed('#ff4757', '🚨 Emergency Mode włączony', 'Serwer został zabezpieczony: lockdown, usunięcie zaproszeń, mocniejszy AntiSpam/AntiRaid/AntiScam.', [
+        { name: 'Lockdown', value: `${result.lockdown.changed} kanałów`, inline: true },
+        { name: 'Zaproszenia usunięte', value: `${result.invites.deleted}`, inline: true },
+        { name: 'OCR/AntiScam', value: '✅ Tryb ostry', inline: true },
+      ])] });
+    }
+
+    if (sub === 'off') {
+      await interaction.deferReply();
+      const result = await disableEmergencyMode(interaction.guild, gc);
+      await sendLog(interaction.guild, getBestLogChannelId(gc), embed('#2ed573', '✅ Emergency Mode OFF', `${interaction.user.tag} wyłączył tryb awaryjny.`));
+      return interaction.editReply({ embeds: [embed('#2ed573', '✅ Emergency Mode wyłączony', 'Kanały zostały odblokowane, a ustawienia ochrony przywrócone z kopii.', [
+        { name: 'Odblokowane', value: `${result.lockdown.changed} kanałów`, inline: true },
+        { name: 'Błędy', value: `${result.lockdown.failed}`, inline: true },
+      ])] });
+    }
+
+    if (sub === 'status') {
+      return interaction.reply({ embeds: [embed(
+        gc.emergency.active ? '#ff4757' : '#2ed573',
+        '🚨 Status Emergency Mode',
+        gc.emergency.active ? 'Tryb awaryjny jest aktywny.' : 'Tryb awaryjny jest wyłączony.',
+        [
+          { name: 'AntiSpam', value: gc.antispam.enabled ? '✅' : '❌', inline: true },
+          { name: 'AntiRaid', value: gc.antiraid.enabled ? '✅' : '❌', inline: true },
+          { name: 'AntiScam', value: gc.antiscam.enabled ? '✅' : '❌', inline: true },
+          { name: 'Lockdown', value: gc.antiraid.lockdownActive ? '🔒 Tak' : '🔓 Nie', inline: true },
+        ]
+      )], ephemeral: true });
+    }
   }
 
   // ── refreshbot ────────────────────────────────────────────────────────
@@ -2153,6 +2669,9 @@ Check the \`komendy\` channel.`
         '`/stats` — odśwież statystyki',
         '`/refreshbot` — odśwież bota na wszystkich serwerach',
         '`/ocrscan on/off/status/strict` — OCR skan scam screenów',
+        '`/antialt on/off/set/status` — ochrona przed świeżymi kontami',
+        '`/emergency on/off/status` — tryb awaryjny serwera',
+        '`/reportscam` — zgłoś scam z przyciskami dla staffu',
         '`/antispam on/off/set/log`',
         '`/antiraid on/off/set/lockdown/log`',
         '`/channelguard on/off/whitelist/log`',
@@ -2174,6 +2693,9 @@ Check the \`komendy\` channel.`
         '`/stats` — refresh stats',
         '`/refreshbot` — refresh bot on all servers',
         '`/ocrscan on/off/status/strict` — OCR scam screenshot scan',
+        '`/antialt on/off/set/status` — new account protection',
+        '`/emergency on/off/status` — server emergency mode',
+        '`/reportscam` — report scam with staff actions',
         '`/antispam on/off/set/log`',
         '`/antiraid on/off/set/lockdown/log`',
         '`/channelguard on/off/whitelist/log`',
@@ -2315,6 +2837,60 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 async function handleButton(interaction, gc) {
+
+  if (interaction.customId.startsWith('scamreport:')) {
+    if (!isStaffMember(interaction.member, gc)) {
+      return interaction.reply({ content: '❌ Tylko staff może obsłużyć zgłoszenie scam.', ephemeral: true });
+    }
+
+    const [, action, reportId] = interaction.customId.split(':');
+    const report = scamReports.get(reportId);
+    if (!report) {
+      return interaction.reply({ content: '❌ To zgłoszenie wygasło po restarcie bota albo nie istnieje.', ephemeral: true });
+    }
+
+    let result = 'Akcja wykonana.';
+
+    if (action === 'block') {
+      if (!report.domain) {
+        return interaction.reply({ content: '❌ W zgłoszeniu nie ma wykrytej domeny do dodania.', ephemeral: true });
+      }
+      if (!gc.antiscam.blockedDomains) gc.antiscam.blockedDomains = [];
+      gc.antiscam.blockedDomains = normalizeBlockedDomains([...DEFAULT_BLOCKED_DOMAINS, ...gc.antiscam.blockedDomains, report.domain]);
+      saveConfig();
+      result = `✅ Dodano domenę \`${report.domain}\` do blacklisty.`;
+    }
+
+    if (action === 'mute') {
+      if (!report.targetId) {
+        return interaction.reply({ content: '❌ W zgłoszeniu nie wskazano użytkownika do muta.', ephemeral: true });
+      }
+      const member = await interaction.guild.members.fetch(report.targetId).catch(() => null);
+      if (!member) return interaction.reply({ content: '❌ Nie znaleziono użytkownika na serwerze.', ephemeral: true });
+      await member.timeout((gc.antiscam?.muteMinutes || 60) * 60 * 1000, `FenixExelent Scam Report: ${report.domain || report.link || reportId}`).catch(() => {});
+      addRisk(gc, report.targetId, 25, `Scam report mute: ${report.domain || report.link || reportId}`, { type: 'reportscam-mute' });
+      saveConfig();
+      result = `🔇 Wyciszono <@${report.targetId}>.`;
+    }
+
+    if (action === 'ban') {
+      if (!report.targetId) {
+        return interaction.reply({ content: '❌ W zgłoszeniu nie wskazano użytkownika do bana.', ephemeral: true });
+      }
+      await interaction.guild.members.ban(report.targetId, { reason: `FenixExelent Scam Report: ${report.domain || report.link || reportId}` }).catch(() => {});
+      addRisk(gc, report.targetId, 40, `Scam report ban: ${report.domain || report.link || reportId}`, { type: 'reportscam-ban' });
+      saveConfig();
+      result = `🔨 Zbanowano użytkownika <@${report.targetId}>.`;
+    }
+
+    if (action === 'reject') {
+      result = '❌ Zgłoszenie odrzucone.';
+    }
+
+    scamReports.delete(reportId);
+    await interaction.message.edit({ components: buildDisabledScamReportButtons(reportId) }).catch(() => {});
+    return interaction.reply({ content: result, ephemeral: true });
+  }
 
   // ── Status Button ──
   if (interaction.customId === 'status_btn') {
@@ -2802,6 +3378,56 @@ function startDashboard() {
     return res.json(gc.warns[userId] || []);
   });
 
+  app.get('/api/public-status', async (req, res) => {
+    let users = 0;
+    let bots = 0;
+
+    for (const [, guild] of client.guilds.cache) {
+      await guild.members.fetch().catch(() => {});
+      users += guild.members.cache.filter(member => !member.user.bot).size;
+      bots += guild.members.cache.filter(member => member.user.bot).size;
+    }
+
+    return res.json({
+      name: client.user?.username || 'FenixExelentSecurity',
+      guilds: client.guilds.cache.size,
+      users,
+      bots,
+      total: users + bots,
+      uptime: Math.floor(process.uptime()),
+      uptimeText: formatUptime(process.uptime()),
+      ping: client.ws.ping,
+      security: aggregateSecurityStats(),
+    });
+  });
+
+  app.get('/public-status', async (req, res) => {
+    const stats = aggregateSecurityStats();
+    return res.type('html').send(`<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FenixExelentSecurity Public Status</title>
+<style>
+body{margin:0;font-family:Arial,sans-serif;background:#050712;color:#f8fbff}main{max-width:1000px;margin:0 auto;padding:36px}.hero{border:1px solid rgba(96,165,250,.25);border-radius:24px;padding:28px;background:linear-gradient(135deg,rgba(37,99,235,.18),rgba(245,158,11,.12))}h1{margin:0 0 8px;font-size:36px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-top:22px}.card{border:1px solid rgba(96,165,250,.22);border-radius:18px;padding:20px;background:#0d1428}.card b{font-size:30px;color:#f59e0b}.muted{color:#9fb0d0}.ok{color:#22c55e;font-weight:900}</style>
+</head>
+<body><main>
+<div class="hero"><h1>🔥 FenixExelentSecurity</h1><p class="muted">Public bot status and security impact.</p><p class="ok">● Online</p></div>
+<div class="grid">
+<div class="card"><b>${client.guilds.cache.size}</b><p>Servers</p></div>
+<div class="card"><b>${client.ws.ping}ms</b><p>Ping</p></div>
+<div class="card"><b>${formatUptime(process.uptime())}</b><p>Uptime</p></div>
+<div class="card"><b>${stats.scamsBlocked}</b><p>Scams blocked</p></div>
+<div class="card"><b>${stats.spamMuted}</b><p>Spam mutes</p></div>
+<div class="card"><b>${stats.raidsDetected}</b><p>Raids detected</p></div>
+<div class="card"><b>${stats.altDetections}</b><p>New account alerts</p></div>
+<div class="card"><b>${stats.reportsCreated}</b><p>Scam reports</p></div>
+</div>
+<p class="muted">Invite: <a style="color:#60a5fa" href="/invite">Add FenixExelentSecurity</a></p>
+</main></body></html>`);
+  });
+
   app.get('/api/stats', async (req, res) => {
   let users = 0;
   let bots = 0;
@@ -2820,8 +3446,11 @@ function startDashboard() {
     total: users + bots,
     uptime: Math.floor(process.uptime()),
     ping: client.ws.ping,
+    security: aggregateSecurityStats(),
   });
 });
+
+  app.get('/ping', (req, res) => res.json({ ok: true, uptime: Math.floor(process.uptime()) }));
 
   app.listen(config.dashboardPort, () => {
     console.log(`\n+------------------------------------------------------+`);

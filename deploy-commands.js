@@ -11,6 +11,32 @@ const commands = [
   new SlashCommandBuilder().setName('refreshbot').setDescription('🔄 Odśwież bota, config i statystyki na wszystkich serwerach'),
 
   new SlashCommandBuilder()
+    .setName('antialt')
+    .setDescription('🆕 Ochrona przed świeżymi kontami Discord')
+    .addSubcommand(s => s.setName('on').setDescription('Włącz AntiAlt'))
+    .addSubcommand(s => s.setName('off').setDescription('Wyłącz AntiAlt'))
+    .addSubcommand(s => s
+      .setName('set')
+      .setDescription('Ustaw limit wieku konta')
+      .addIntegerOption(o => o.setName('mindays').setDescription('Minimalny wiek konta w dniach').setRequired(false).setMinValue(1).setMaxValue(365))
+      .addChannelOption(o => o.setName('logi').setDescription('Kanał logów AntiAlt').setRequired(false)))
+    .addSubcommand(s => s.setName('status').setDescription('Pokaż status AntiAlt')),
+
+  new SlashCommandBuilder()
+    .setName('reportscam')
+    .setDescription('🚨 Zgłoś scam link, domenę lub użytkownika')
+    .addStringOption(o => o.setName('link').setDescription('Podejrzany link lub domena').setRequired(false))
+    .addUserOption(o => o.setName('uzytkownik').setDescription('Podejrzany użytkownik').setRequired(false))
+    .addStringOption(o => o.setName('opis').setDescription('Krótki opis zgłoszenia').setRequired(false).setMaxLength(700)),
+
+  new SlashCommandBuilder()
+    .setName('emergency')
+    .setDescription('🚨 Tryb awaryjny serwera')
+    .addSubcommand(s => s.setName('on').setDescription('Włącz lockdown i mocniejsze zabezpieczenia'))
+    .addSubcommand(s => s.setName('off').setDescription('Wyłącz tryb awaryjny'))
+    .addSubcommand(s => s.setName('status').setDescription('Pokaż status trybu awaryjnego')),
+
+  new SlashCommandBuilder()
     .setName('ocrscan')
     .setDescription('👁️ OCR skan scam screenów')
     .addSubcommand(s => s.setName('on').setDescription('Włącz OCR AntiScam dla screenów'))
