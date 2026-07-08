@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pl">
 <head>
 <meta charset="UTF-8">
@@ -105,6 +105,7 @@ a{text-decoration:none;color:inherit}.app{display:grid;grid-template-columns:280
     <button onclick="tab('verify',this)">✅ Weryfikacja</button>
     <button onclick="tab('tickets',this)">🎫 Tickety</button>
     <button onclick="tab('logs',this)">📋 Logi</button>
+    <button onclick="tab('securitypro',this)">🧠 Security Pro</button>
   </div>
   <div class="navTitle">Linki</div>
   <div class="nav">
@@ -181,6 +182,27 @@ a{text-decoration:none;color:inherit}.app{display:grid;grid-template-columns:280
     </div><div class="actions"><button class="btn" onclick="save()">💾 Zapisz</button><button class="btn secondary" onclick="sendTicket()">📤 Wyślij panel</button></div>
   </section>
 
+
+  <section id="securitypro" class="panel"><div class="top"><div><h1>🧠 Security Pro</h1><p>AntiScam OCR, AntiAlt, Emergency Mode, appeal, ignorowane kanały/role i status publiczny.</p></div></div>
+    <div class="form">
+      <div class="field"><label>AntiScam</label><select id="scEnabled"><option value="true">Włączony</option><option value="false">Wyłączony</option></select></div>
+      <div class="field"><label>OCR scan screenów</label><select id="ocrEnabled"><option value="true">Włączony</option><option value="false">Wyłączony</option></select></div>
+      <div class="field"><label>Tryb strict obrazków</label><select id="ocrStrict"><option value="false">Wyłączony</option><option value="true">Włączony</option></select></div>
+      <div class="field"><label>AntiAlt</label><select id="aaEnabled"><option value="true">Włączony</option><option value="false">Wyłączony</option></select></div>
+      <div class="field"><label>Minimalny wiek konta / dni</label><input id="aaDays" type="number" min="1" max="365"></div>
+      <div class="field"><label>Kanał logów AntiAlt</label><select id="aaLog"></select></div>
+      <div class="field"><label>Emergency Mode</label><select id="emActive"><option value="false">Wyłączony</option><option value="true">Włączony</option></select></div>
+      <div class="field"><label>Kanał Appeal</label><select id="appealChannel"></select></div>
+      <div class="field"><label>Ignorowane kanały Security</label><select id="ignoreChannel"></select><p>Dodawanie/usuwanie najlepiej przez /securityignore.</p></div>
+    </div>
+    <div class="actions">
+      <button class="btn" onclick="save()">💾 Zapisz</button>
+      <button class="btn secondary" onclick="location.href='/public-status'">📊 Public Status</button>
+      <button class="btn secondary" onclick="location.href='/privacy'">🔐 Privacy</button>
+      <button class="btn secondary" onclick="location.href='/terms'">📜 Terms</button>
+    </div>
+  </section>
+
   <section id="logs" class="panel"><div class="top"><div><h1>📋 Logi</h1><p>Główne kanały logowania akcji bota.</p></div></div>
     <div class="form">
       <div class="field"><label>Mod Log</label><select id="modLog"></select></div>
@@ -241,6 +263,11 @@ function body(extra={}){
     verification:{enabled:bool(vfEnabled.value),roleId:vfRole.value||null,channelId:vfChannel.value||null},
     tickets:{enabled:bool(tkEnabled.value),supportRoleId:tkRole.value||null,logChannelId:tkLogs.value||null,panelChannelId:tkChannel.value||null},
     modLog:{channelId:modLog.value||null},
+    antiscam:{enabled:bool(scEnabled.value),ocrScamImages:bool(ocrEnabled.value),blockImageOnlyScamScreenshots:bool(ocrStrict.value)},
+    antialt:{enabled:bool(aaEnabled.value),minAccountAgeDays:+aaDays.value,logChannel:aaLog.value||null},
+    emergency:{active:bool(emActive.value)},
+    appeals:{enabled:true,channelId:appealChannel.value||null},
+    securityIgnore:{channels:ignoreChannel.value?[ignoreChannel.value]:[],roles:[]},
     actions: extra
   };
 }

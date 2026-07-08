@@ -10,6 +10,35 @@ const commands = [
   new SlashCommandBuilder().setName('stats').setDescription('🔄 Odśwież statystyki serwera'),
   new SlashCommandBuilder().setName('refreshbot').setDescription('🔄 Odśwież bota, config i statystyki na wszystkich serwerach'),
 
+  new SlashCommandBuilder().setName('privacy').setDescription('🔐 Link do Privacy Policy'),
+  new SlashCommandBuilder().setName('terms').setDescription('📜 Link do Terms of Service'),
+  new SlashCommandBuilder().setName('about').setDescription('ℹ️ Informacje o bocie'),
+  new SlashCommandBuilder().setName('support').setDescription('🆘 Link do supportu'),
+  new SlashCommandBuilder().setName('servercheck').setDescription('🧪 Sprawdź Security Score serwera'),
+
+  new SlashCommandBuilder()
+    .setName('securityignore')
+    .setDescription('🧾 Ignorowane kanały/role dla automatycznych zabezpieczeń')
+    .addSubcommand(s => s.setName('channel').setDescription('Dodaj ignorowany kanał').addChannelOption(o => o.setName('kanal').setDescription('Kanał').setRequired(true)))
+    .addSubcommand(s => s.setName('role').setDescription('Dodaj ignorowaną rolę').addRoleOption(o => o.setName('rola').setDescription('Rola').setRequired(true)))
+    .addSubcommand(s => s.setName('removechannel').setDescription('Usuń ignorowany kanał').addChannelOption(o => o.setName('kanal').setDescription('Kanał').setRequired(true)))
+    .addSubcommand(s => s.setName('removerole').setDescription('Usuń ignorowaną rolę').addRoleOption(o => o.setName('rola').setDescription('Rola').setRequired(true)))
+    .addSubcommand(s => s.setName('list').setDescription('Pokaż ignorowane kanały i role')),
+
+  new SlashCommandBuilder()
+    .setName('backup')
+    .setDescription('📦 Backup serwera')
+    .addSubcommand(s => s.setName('create').setDescription('Utwórz backup ról, kanałów i ustawień'))
+    .addSubcommand(s => s.setName('list').setDescription('Pokaż backupy'))
+    .addSubcommand(s => s.setName('restore').setDescription('Przywróć brakujące role i kanały z backupu').addStringOption(o => o.setName('id').setDescription('ID backupu').setRequired(true))),
+
+  new SlashCommandBuilder()
+    .setName('appeal')
+    .setDescription('📝 System odwołań od kar')
+    .addSubcommand(s => s.setName('setup').setDescription('Ustaw kanał appeal').addChannelOption(o => o.setName('kanal').setDescription('Kanał appeali').setRequired(true)))
+    .addSubcommand(s => s.setName('submit').setDescription('Wyślij odwołanie').addStringOption(o => o.setName('powod').setDescription('Opisz, dlaczego kara powinna zostać zdjęta').setRequired(true).setMaxLength(1000)))
+    .addSubcommand(s => s.setName('review').setDescription('Sprawdź appeal po ID').addStringOption(o => o.setName('id').setDescription('ID appeala').setRequired(true))),
+
   new SlashCommandBuilder()
     .setName('antialt')
     .setDescription('🆕 Ochrona przed świeżymi kontami Discord')

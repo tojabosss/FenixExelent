@@ -133,6 +133,18 @@ function defaultGuildConfig() {
       altDetections: 0,
       reportsCreated: 0,
       emergencyActivations: 0,
+      backupsCreated: 0,
+      appealsCreated: 0,
+    },
+    securityIgnore: {
+      channels: [],
+      roles: [],
+    },
+    backups: {},
+    appeals: {
+      enabled: true,
+      channelId: null,
+      cases: {},
     },
     channelGuard: {
       enabled: false, blockNewChannels: false,
@@ -232,6 +244,8 @@ function ensureSecurityStats(gc) {
     altDetections: 0,
     reportsCreated: 0,
     emergencyActivations: 0,
+    backupsCreated: 0,
+    appealsCreated: 0,
   }, gc.securityStats);
   return gc.securityStats;
 }
@@ -369,6 +383,8 @@ function aggregateSecurityStats() {
     altDetections: 0,
     reportsCreated: 0,
     emergencyActivations: 0,
+    backupsCreated: 0,
+    appealsCreated: 0,
   };
 
   for (const guildId of Object.keys(config.guilds || {})) {
@@ -522,6 +538,211 @@ function maybeAddFastJoinRisk(message, gc) {
   }
 }
 
+
+function ensureArrayConfig(obj, key) {
+  if (!obj[key] || !Array.isArray(obj[key])) obj[key] = [];
+  obj[key] = [...new Set(obj[key].filter(Boolean))];
+  return obj[key];
+}
+
+function ensureSecurityIgnore(gc) {
+  if (!gc.securityIgnore) gc.securityIgnore = { channels: [], roles: [] };
+  ensureArrayConfig(gc.securityIgnore, 'channels');
+  ensureArrayConfig(gc.securityIgnore, 'roles');
+  return gc.securityIgnore;
+}
+
+function isSecurityIgnoredMessage(message, gc) {
+  const ignore = ensureSecurityIgnore(gc);
+  if (ignore.channels.includes(message.channel?.id)) return true;
+  const member = message.member;
+  if (member && ignore.roles.some(roleId => member.roles.cache.has(roleId))) return true;
+  return false;
+}
+
+function makeBackupId() {
+  const d = new Date();
+  const stamp = d.toISOString().replace(/[-:TZ.]/g, '').slice(0, 14);
+  return `backup-${stamp}`;
+}
+
+function snapshotGuildConfig(gc) {
+  return JSON.parse(JSON.stringify({
+    antispam: gc.antispam,
+    antiraid: gc.antiraid,
+    antiscam: gc.antiscam,
+    antialt: gc.antialt,
+    channelGuard: gc.channelGuard,
+    verification: gc.verification,
+    tickets: gc.tickets,
+    modLog: gc.modLog,
+    securityIgnore: gc.securityIgnore,
+    appeals: gc.appeals,
+  }));
+}
+
+function createServerBackup(guild, gc) {
+  const id = makeBackupId();
+  if (!gc.backups) gc.backups = {};
+
+  const roles = guild.roles.cache
+    .filter(role => !role.managed && role.id !== guild.roles.everyone.id)
+    .map(role => ({
+      name: role.name,
+      color: role.hexColor,
+      hoist: role.hoist,
+      mentionable: role.mentionable,
+      permissions: role.permissions.bitfield.toString(),
+      position: role.position,
+    }))
+    .sort((a, b) => a.position - b.position);
+
+  const channels = guild.channels.cache
+    .filter(ch => ch.type === ChannelType.GuildCategory || ch.type === ChannelType.GuildText || ch.type === ChannelType.GuildVoice)
+    .map(ch => ({
+      name: ch.name,
+      type: ch.type,
+      parentName: ch.parent?.name || null,
+      topic: ch.topic || null,
+      nsfw: !!ch.nsfw,
+      position: ch.position || 0,
+    }))
+    .sort((a, b) => a.position - b.position);
+
+  gc.backups[id] = {
+    id,
+    createdAt: new Date().toISOString(),
+    guildName: guild.name,
+    roles,
+    channels,
+    config: snapshotGuildConfig(gc),
+  };
+
+  const keys = Object.keys(gc.backups).sort((a, b) => String(gc.backups[b].createdAt).localeCompare(String(gc.backups[a].createdAt)));
+  for (const oldKey of keys.slice(10)) delete gc.backups[oldKey];
+
+  ensureSecurityStats(gc).backupsCreated++;
+  saveConfig();
+  return gc.backups[id];
+}
+
+async function restoreServerBackup(guild, gc, backupId) {
+  const backup = gc.backups?.[backupId];
+  if (!backup) return null;
+
+  let rolesCreated = 0;
+  let channelsCreated = 0;
+  let failed = 0;
+
+  for (const r of backup.roles || []) {
+    if (!guild.roles.cache.find(role => role.name === r.name)) {
+      await guild.roles.create({
+        name: r.name,
+        color: /^#[0-9a-f]{6}$/i.test(r.color || '') ? r.color : undefined,
+        hoist: !!r.hoist,
+        mentionable: !!r.mentionable,
+        permissions: BigInt(r.permissions || '0'),
+        reason: `FenixExelent backup restore ${backupId}`,
+      }).then(() => rolesCreated++).catch(() => failed++);
+    }
+  }
+
+  const categories = (backup.channels || []).filter(ch => ch.type === ChannelType.GuildCategory);
+  const others = (backup.channels || []).filter(ch => ch.type !== ChannelType.GuildCategory);
+
+  for (const c of categories) {
+    if (!guild.channels.cache.find(ch => ch.type === ChannelType.GuildCategory && ch.name === c.name)) {
+      await guild.channels.create({ name: c.name, type: ChannelType.GuildCategory, reason: `FenixExelent backup restore ${backupId}` })
+        .then(() => channelsCreated++)
+        .catch(() => failed++);
+    }
+  }
+
+  await guild.channels.fetch().catch(() => {});
+
+  for (const c of others) {
+    const exists = guild.channels.cache.find(ch => ch.type === c.type && ch.name === c.name && (ch.parent?.name || null) === (c.parentName || null));
+    if (exists) continue;
+    const parent = c.parentName ? guild.channels.cache.find(ch => ch.type === ChannelType.GuildCategory && ch.name === c.parentName) : null;
+    await guild.channels.create({
+      name: c.name,
+      type: c.type,
+      parent: parent?.id || null,
+      topic: c.type === ChannelType.GuildText ? c.topic || undefined : undefined,
+      nsfw: c.type === ChannelType.GuildText ? !!c.nsfw : undefined,
+      reason: `FenixExelent backup restore ${backupId}`,
+    }).then(() => channelsCreated++).catch(() => failed++);
+  }
+
+  return { backup, rolesCreated, channelsCreated, failed };
+}
+
+function calculateServerSecurityScore(gc) {
+  const checks = [];
+  const add = (label, ok, points, warn = '') => checks.push({ label, ok, points, warn });
+
+  add('AntiScam włączony', !!gc.antiscam?.enabled, 15);
+  add('OCR screenów scam włączony', !!gc.antiscam?.ocrScamImages, 10);
+  add('AntiSpam włączony', !!gc.antispam?.enabled, 12);
+  add('AntiRaid włączony', !!gc.antiraid?.enabled, 12);
+  add('AntiAlt włączony', !!gc.antialt?.enabled, 10);
+  add('Weryfikacja włączona', !!gc.verification?.enabled, 10);
+  add('Logi moderacji ustawione', !!gc.modLog?.channelId, 8);
+  add('Logi AntiScam ustawione', !!gc.antiscam?.logChannel, 8);
+  add('Tryb awaryjny dostępny', !!gc.emergency, 5);
+  add('System zgłoszeń/appeali gotowy', !!gc.appeals, 5);
+  add('Ignorowane kanały/role skonfigurowane', (gc.securityIgnore?.channels?.length || gc.securityIgnore?.roles?.length || isScamReportChannel({ name: 'zgłoszenia-scam' })), 5);
+
+  const score = Math.min(100, checks.reduce((sum, c) => sum + (c.ok ? c.points : 0), 0));
+  return { score, checks };
+}
+
+function makeAppealId() {
+  return `appeal-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+}
+
+function ensureAppeals(gc) {
+  if (!gc.appeals) gc.appeals = { enabled: true, channelId: null, cases: {} };
+  if (!gc.appeals.cases) gc.appeals.cases = {};
+  return gc.appeals;
+}
+
+function buildAppealButtons(appealId) {
+  return [new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`appeal:accept:${appealId}`).setLabel('✅ Accept').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`appeal:reject:${appealId}`).setLabel('❌ Reject').setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`appeal:more:${appealId}`).setLabel('📝 More info').setStyle(ButtonStyle.Secondary),
+  )];
+}
+
+function buildDisabledAppealButtons(appealId) {
+  return [new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`appeal:accept:${appealId}`).setLabel('✅ Accept').setStyle(ButtonStyle.Success).setDisabled(true),
+    new ButtonBuilder().setCustomId(`appeal:reject:${appealId}`).setLabel('❌ Reject').setStyle(ButtonStyle.Danger).setDisabled(true),
+    new ButtonBuilder().setCustomId(`appeal:more:${appealId}`).setLabel('📝 More info').setStyle(ButtonStyle.Secondary).setDisabled(true),
+  )];
+}
+
+function policyHtml(kind) {
+  const baseUrl = config.dashboardUrl || 'https://fenixexelent.onrender.com';
+  const isPrivacy = kind === 'privacy';
+  const title = isPrivacy ? 'Privacy Policy' : kind === 'terms' ? 'Terms of Service' : kind === 'support' ? 'Support' : 'About FenixExelentSecurity';
+  const body = isPrivacy ? `
+    <p>FenixExelentSecurity processes Discord server data only to provide moderation, security, AntiSpam, AntiRaid, AntiScam, OCR screenshot scanning, tickets, verification, logs and dashboard features.</p>
+    <p>The bot may process message content, links, domains, attachment metadata, OCR text from images, user IDs, server IDs, role/channel IDs, moderation actions and configuration settings.</p>
+    <p>Data is not sold. Server owners can remove bot data by removing the bot and asking support for deletion.</p>
+    <p>Do not send secrets or private tokens in public Discord channels.</p>` : kind === 'terms' ? `
+    <p>By using FenixExelentSecurity, server owners agree to use the bot for lawful moderation and security purposes.</p>
+    <p>The bot may delete messages, timeout users, lock channels and log security events according to the server configuration.</p>
+    <p>Administrators are responsible for configuring permissions and reviewing automated actions.</p>
+    <p>The service is provided as-is and may change as security features improve.</p>` : kind === 'support' ? `
+    <p>Need help? Use the support server or dashboard links below.</p>
+    <p><a href="${baseUrl}/invite">Invite the bot</a> · <a href="${baseUrl}/dashboard.html">Dashboard</a> · <a href="${baseUrl}/public-status">Public Status</a></p>` : `
+    <p>FenixExelentSecurity is a Discord security bot focused on AntiScam, AntiRaid, AntiSpam, OCR screenshot scanning, AntiAlt protection, tickets, verification, reports, appeals, backups and emergency lockdown.</p>
+    <p><a href="${baseUrl}/invite">Invite FenixExelentSecurity</a> · <a href="${baseUrl}/dashboard.html">Open Dashboard</a></p>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>body{margin:0;background:#050712;color:#f8fbff;font-family:Arial,sans-serif}main{max-width:900px;margin:0 auto;padding:36px}.card{background:#0d1428;border:1px solid rgba(96,165,250,.25);border-radius:24px;padding:28px}a{color:#60a5fa}h1{color:#f59e0b}.muted{color:#9fb0d0}</style></head><body><main><div class="card"><h1>${title}</h1>${body}<p class="muted">Last updated: ${new Date().toISOString().slice(0,10)}</p></div></main></body></html>`;
+}
+
 async function getOrCreateCategory(guild, name) {
   return guild.channels.cache.find(c =>
     c.type === ChannelType.GuildCategory && c.name === name
@@ -600,6 +821,23 @@ client.on('guildCreate', async (guild) => {
   console.log(`✅ Bot dodany na serwer: ${guild.name} (${guild.id})`);
   updateBotPresence();
   await updateStats(guild).catch(() => {});
+
+  try {
+    const owner = await guild.fetchOwner().catch(() => null);
+    if (owner) {
+      await owner.send({ embeds: [embed(
+        '#ff6b00',
+        '🔥 FenixExelentSecurity — szybki start',
+        `Dzięki za dodanie bota na **${guild.name}**.\n\n` +
+        '1. Użyj `/setup`\n' +
+        '2. Ustaw `/modlog` oraz `/antiscam log`\n' +
+        '3. Włącz `/antiscam on`, `/ocrscan on`, `/antialt on`\n' +
+        '4. Sprawdź `/servercheck`\n' +
+        '5. Otwórz dashboard: ' + config.dashboardUrl + '\n\n' +
+        'W razie raidu użyj `/emergency on`.'
+      )] }).catch(() => {});
+    }
+  } catch {}
 });
 
 client.on('guildDelete', async (guild) => {
@@ -1127,6 +1365,7 @@ client.on('messageCreate', async (message) => {
 
   const gc = getGuildConfig(message.guild.id);
   if (!gc.antiscam?.enabled) return;
+  if (isSecurityIgnoredMessage(message, gc) && !isScamReportChannel(message.channel)) return;
 
   const scam = await scanMessageForScam(message, gc);
   if (!scam) return;
@@ -1208,6 +1447,7 @@ client.on('messageCreate', async (message) => {
   if (!message.guild || message.author.bot) return;
   const gc = getGuildConfig(message.guild.id);
   if (!gc.antispam.enabled) return;
+  if (isSecurityIgnoredMessage(message, gc)) return;
 
   const uid = message.author.id;
   const now = Date.now();
@@ -1438,14 +1678,14 @@ if (commandName === 'help') {
         .setTitle('🔥 FenixExelent — Panel Pomocy')
         .setDescription('Kompletna lista komend dostępnych na serwerze')
         .addFields(
-          { name: '⚙️ Konfiguracja',   value: '`setup` `security` `status` `dashboard` `stats` `refreshbot` `ocrscan` `antialt` `emergency`',                                 inline: false },
+          { name: '⚙️ Konfiguracja',   value: '`setup` `security` `servercheck` `dashboard` `stats` `refreshbot` `backup` `appeal`',                                 inline: false },
           { name: '🚫 AntiSpam',        value: '`antispam on` `antispam off` `antispam set` `antispam log`',                                    inline: true  },
           { name: '🚨 AntiRaid',        value: '`antiraid on` `antiraid off` `antiraid set` `antiraid lockdown` `antiraid log`',                inline: true  },
           { name: '🔒 Channel Guard',   value: '`channelguard on` `channelguard off` `channelguard whitelist` `channelguard log`',              inline: true  },
           { name: '✅ Weryfikacja',     value: '`verification setup` `verification on` `verification off` `verification panel`',               inline: true  },
           { name: '🎫 Tickety',         value: '`ticket setup` `ticket on` `ticket off` `ticket panel`',                                       inline: true  },
           { name: '🔧 Moderacja',       value: '`warn` `warnings` `clearwarns` `kick` `ban` `unban` `unmute`',                                 inline: true  },
-          { name: '📋 Mod Log',         value: '`modlog` — ustaw kanał logów moderacji',                                                       inline: true  },
+          { name: '📋 Mod Log',         value: '`modlog` `securityignore` `privacy` `terms` `about` `support`',                                                       inline: true  },
         )
         .setFooter({ text: 'FenixExelent 🔥 | Wszystkie komendy' })
         .setTimestamp()
@@ -1738,6 +1978,161 @@ if (commandName === 'help') {
       { name: 'Zgłoszenia scam', value: `${stats.reportsCreated || 0}`, inline: true },
       { name: 'Emergency aktywacje', value: `${stats.emergencyActivations || 0}`, inline: true },
     ])], ephemeral: true });
+  }
+
+
+  // ── public launch pack ───────────────────────────────────────────────
+  if (['privacy', 'terms', 'about', 'support'].includes(commandName)) {
+    const url = `${config.dashboardUrl}/${commandName}`;
+    const labels = { privacy: 'Privacy Policy', terms: 'Terms of Service', about: 'About', support: 'Support' };
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setLabel(labels[commandName]).setStyle(ButtonStyle.Link).setURL(url).setEmoji('🌐')
+    );
+    return interaction.reply({ embeds: [embed('#ff6b00', `🌐 ${labels[commandName]}`, `Otwórz stronę: ${url}`)], components: [row], ephemeral: true });
+  }
+
+  // ── servercheck ──────────────────────────────────────────────────────
+  if (commandName === 'servercheck') {
+    const result = calculateServerSecurityScore(gc);
+    const color = result.score >= 85 ? '#2ed573' : result.score >= 60 ? '#f59e0b' : '#ff4757';
+    const lines = result.checks.map(c => `${c.ok ? '✅' : '❌'} ${c.label} ${c.ok ? `(+${c.points})` : ''}`).join('\n');
+    return interaction.reply({ embeds: [embed(
+      color,
+      `🧪 Server Security Score — ${result.score}/100`,
+      result.score >= 85 ? 'Serwer wygląda bardzo dobrze zabezpieczony.' : 'Poniżej masz rzeczy do poprawienia.',
+      [{ name: 'Checklist', value: lines.slice(0, 1000), inline: false }]
+    )], ephemeral: true });
+  }
+
+  // ── securityignore ───────────────────────────────────────────────────
+  if (commandName === 'securityignore') {
+    const perm = requireSecurityPermission(interaction, gc);
+    if (perm) return perm;
+
+    const sub = interaction.options.getSubcommand();
+    const ignore = ensureSecurityIgnore(gc);
+
+    if (sub === 'channel') {
+      const channel = interaction.options.getChannel('kanal');
+      if (!ignore.channels.includes(channel.id)) ignore.channels.push(channel.id);
+      saveConfig();
+      return interaction.reply({ content: `✅ Kanał <#${channel.id}> będzie ignorowany przez automatyczne zabezpieczenia.`, ephemeral: true });
+    }
+    if (sub === 'role') {
+      const role = interaction.options.getRole('rola');
+      if (!ignore.roles.includes(role.id)) ignore.roles.push(role.id);
+      saveConfig();
+      return interaction.reply({ content: `✅ Rola <@&${role.id}> będzie ignorowana przez automatyczne zabezpieczenia.`, ephemeral: true });
+    }
+    if (sub === 'removechannel') {
+      const channel = interaction.options.getChannel('kanal');
+      ignore.channels = ignore.channels.filter(id => id !== channel.id);
+      saveConfig();
+      return interaction.reply({ content: `🗑️ Usunięto kanał <#${channel.id}> z ignorowanych.`, ephemeral: true });
+    }
+    if (sub === 'removerole') {
+      const role = interaction.options.getRole('rola');
+      ignore.roles = ignore.roles.filter(id => id !== role.id);
+      saveConfig();
+      return interaction.reply({ content: `🗑️ Usunięto rolę <@&${role.id}> z ignorowanych.`, ephemeral: true });
+    }
+    if (sub === 'list') {
+      const channels = ignore.channels.length ? ignore.channels.map(id => `<#${id}>`).join('\n') : 'Brak';
+      const roles = ignore.roles.length ? ignore.roles.map(id => `<@&${id}>`).join('\n') : 'Brak';
+      return interaction.reply({ embeds: [embed('#ff6b00', '🧾 Ignorowane kanały/role', 'Te miejsca nie są karane przez automatyczne filtry.', [
+        { name: 'Kanały', value: channels.slice(0, 1000), inline: true },
+        { name: 'Role', value: roles.slice(0, 1000), inline: true },
+      ])], ephemeral: true });
+    }
+  }
+
+  // ── backup ───────────────────────────────────────────────────────────
+  if (commandName === 'backup') {
+    if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+      return interaction.reply({ content: '❌ Tylko administrator może używać backupów.', ephemeral: true });
+    }
+    const sub = interaction.options.getSubcommand();
+    if (!gc.backups) gc.backups = {};
+
+    if (sub === 'create') {
+      await interaction.deferReply({ ephemeral: true });
+      const backup = createServerBackup(interaction.guild, gc);
+      return interaction.editReply({ embeds: [embed('#2ed573', '✅ Backup utworzony', `ID backupu: \`${backup.id}\``, [
+        { name: 'Role', value: `${backup.roles.length}`, inline: true },
+        { name: 'Kanały', value: `${backup.channels.length}`, inline: true },
+      ])] });
+    }
+    if (sub === 'list') {
+      const list = Object.values(gc.backups).sort((a,b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+      const value = list.length ? list.slice(0, 10).map(b => `• \`${b.id}\` — ${new Date(b.createdAt).toLocaleString('pl-PL')} — ${b.channels?.length || 0} kanałów`).join('\n') : 'Brak backupów.';
+      return interaction.reply({ embeds: [embed('#ff6b00', '📦 Backupy serwera', value)], ephemeral: true });
+    }
+    if (sub === 'restore') {
+      await interaction.deferReply({ ephemeral: true });
+      const id = interaction.options.getString('id');
+      const result = await restoreServerBackup(interaction.guild, gc, id);
+      if (!result) return interaction.editReply({ content: '❌ Nie znaleziono backupu o tym ID.' });
+      saveConfig();
+      return interaction.editReply({ embeds: [embed('#2ed573', '♻️ Backup przywrócony', `Przywrócono brakujące role i kanały z \`${id}\`.`, [
+        { name: 'Role utworzone', value: `${result.rolesCreated}`, inline: true },
+        { name: 'Kanały utworzone', value: `${result.channelsCreated}`, inline: true },
+        { name: 'Błędy', value: `${result.failed}`, inline: true },
+      ])] });
+    }
+  }
+
+  // ── appeal ───────────────────────────────────────────────────────────
+  if (commandName === 'appeal') {
+    const sub = interaction.options.getSubcommand();
+    const appeals = ensureAppeals(gc);
+
+    if (sub === 'setup') {
+      const perm = requireSecurityPermission(interaction, gc);
+      if (perm) return perm;
+      const channel = interaction.options.getChannel('kanal');
+      appeals.enabled = true;
+      appeals.channelId = channel.id;
+      saveConfig();
+      return interaction.reply({ content: `✅ Kanał appeali ustawiony: <#${channel.id}>`, ephemeral: true });
+    }
+
+    if (sub === 'submit') {
+      if (!appeals.enabled) return interaction.reply({ content: '❌ System appeal jest wyłączony.', ephemeral: true });
+      const reason = interaction.options.getString('powod');
+      const appealId = makeAppealId();
+      appeals.cases[appealId] = {
+        id: appealId,
+        userId: interaction.user.id,
+        userTag: interaction.user.tag,
+        reason,
+        status: 'open',
+        createdAt: new Date().toISOString(),
+      };
+      ensureSecurityStats(gc).appealsCreated++;
+      saveConfig();
+      const ch = appeals.channelId ? await interaction.guild.channels.fetch(appeals.channelId).catch(() => null) : await interaction.guild.channels.fetch(getBestLogChannelId(gc)).catch(() => null);
+      if (ch) {
+        await ch.send({ embeds: [embed('#ff6b00', '📝 Nowe odwołanie / Appeal', `Użytkownik <@${interaction.user.id}> wysłał odwołanie.`, [
+          { name: 'ID', value: `\`${appealId}\``, inline: true },
+          { name: 'Użytkownik', value: `<@${interaction.user.id}>`, inline: true },
+          { name: 'Powód', value: reason.slice(0, 1000), inline: false },
+        ])], components: buildAppealButtons(appealId) }).catch(() => {});
+      }
+      return interaction.reply({ content: `✅ Odwołanie wysłane. ID: \`${appealId}\``, ephemeral: true });
+    }
+
+    if (sub === 'review') {
+      const perm = requireSecurityPermission(interaction, gc);
+      if (perm) return perm;
+      const id = interaction.options.getString('id');
+      const a = appeals.cases[id];
+      if (!a) return interaction.reply({ content: '❌ Nie znaleziono appeala.', ephemeral: true });
+      return interaction.reply({ embeds: [embed('#ff6b00', `📝 Appeal ${id}`, `Status: **${a.status}**`, [
+        { name: 'Użytkownik', value: `<@${a.userId}>`, inline: true },
+        { name: 'Data', value: new Date(a.createdAt).toLocaleString('pl-PL'), inline: true },
+        { name: 'Powód', value: a.reason.slice(0, 1000), inline: false },
+      ])], ephemeral: true });
+    }
   }
 
   // ── emergency ────────────────────────────────────────────────────────
@@ -2838,6 +3233,38 @@ client.on('interactionCreate', async (interaction) => {
 
 async function handleButton(interaction, gc) {
 
+
+  if (interaction.customId.startsWith('appeal:')) {
+    if (!isStaffMember(interaction.member, gc)) {
+      return interaction.reply({ content: '❌ Tylko staff może obsłużyć appeal.', ephemeral: true });
+    }
+    const [, action, appealId] = interaction.customId.split(':');
+    const appeals = ensureAppeals(gc);
+    const appeal = appeals.cases?.[appealId];
+    if (!appeal) return interaction.reply({ content: '❌ Appeal nie istnieje albo wygasł.', ephemeral: true });
+
+    let result = 'Zaktualizowano appeal.';
+    if (action === 'accept') {
+      appeal.status = 'accepted';
+      const member = await interaction.guild.members.fetch(appeal.userId).catch(() => null);
+      if (member) await member.timeout(null, `Appeal accepted by ${interaction.user.tag}`).catch(() => {});
+      result = `✅ Appeal zaakceptowany. Zdjęto timeout, jeśli był aktywny.`;
+    }
+    if (action === 'reject') {
+      appeal.status = 'rejected';
+      result = '❌ Appeal odrzucony.';
+    }
+    if (action === 'more') {
+      appeal.status = 'needs_more_info';
+      result = '📝 Oznaczono appeal jako wymagający dodatkowych informacji.';
+    }
+    appeal.reviewedBy = interaction.user.id;
+    appeal.reviewedAt = new Date().toISOString();
+    saveConfig();
+    await interaction.message.edit({ components: buildDisabledAppealButtons(appealId) }).catch(() => {});
+    return interaction.reply({ content: result, ephemeral: true });
+  }
+
   if (interaction.customId.startsWith('scamreport:')) {
     if (!isStaffMember(interaction.member, gc)) {
       return interaction.reply({ content: '❌ Tylko staff może obsłużyć zgłoszenie scam.', ephemeral: true });
@@ -3284,6 +3711,10 @@ function startDashboard() {
       'verification',
       'tickets',
       'modLog',
+      'antialt',
+      'emergency',
+      'securityIgnore',
+      'appeals',
     ];
 
     for (const key of allowed) {
@@ -3377,6 +3808,12 @@ function startDashboard() {
     const gc = getGuildConfig(guildId);
     return res.json(gc.warns[userId] || []);
   });
+
+
+  app.get('/privacy', (req, res) => res.type('html').send(policyHtml('privacy')));
+  app.get('/terms', (req, res) => res.type('html').send(policyHtml('terms')));
+  app.get('/about', (req, res) => res.type('html').send(policyHtml('about')));
+  app.get('/support', (req, res) => res.type('html').send(policyHtml('support')));
 
   app.get('/api/public-status', async (req, res) => {
     let users = 0;
