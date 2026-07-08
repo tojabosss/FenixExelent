@@ -32,6 +32,140 @@ const path    = require('path');
 const fs = require('fs');
 const app = express();
 
+
+// ─── SUPPORT AUTO TRANSLATE ────────────────────────────────────────────────
+// Automatyczne tłumaczenie działa tylko na support serwerze.
+// Render ENV:
+// SUPPORT_GUILD_ID=ID_TWOJEGO_SUPPORT_SERWERA
+// AUTO_TRANSLATE_ENABLED=true
+// AUTO_TRANSLATE_LANGS=pl,en,de,fr,es,it,pt,ru,nl,tr,uk,ja,ko,zh,ar
+// TRANSLATE_API_URL=https://libretranslate.com/translate
+// TRANSLATE_API_KEY=opcjonalny_klucz_api
+const TRANSLATE_LANG_LABELS = {
+  pl: '🇵🇱 Polski',
+  en: '🇬🇧 English',
+  de: '🇩🇪 Deutsch',
+  es: '🇪🇸 Español',
+  fr: '🇫🇷 Français',
+  uk: '🇺🇦 Українська',
+  ru: '🇷🇺 Русский',
+  it: '🇮🇹 Italiano',
+  pt: '🇵🇹 Português',
+  nl: '🇳🇱 Nederlands',
+  tr: '🇹🇷 Türkçe',
+  ja: '🇯🇵 日本語',
+  ko: '🇰🇷 한국어',
+  zh: '🇨🇳 中文',
+  ar: '🇸🇦 العربية',
+};
+
+function getSupportGuildId() {
+  return process.env.SUPPORT_GUILD_ID || '1492793536930910310';
+}
+
+function getAutoTranslateTargets() {
+  return String(process.env.AUTO_TRANSLATE_LANGS || process.env.SUPPORT_TRANSLATE_LANGS || 'pl,en,de,fr,es,it,pt,ru,nl,tr,uk,ja,ko,zh,ar')
+    .split(',')
+    .map(x => x.trim().toLowerCase())
+    .filter(Boolean)
+    .filter((value, index, arr) => arr.indexOf(value) === index)
+    .slice(0, Number(process.env.AUTO_TRANSLATE_MAX_TARGETS || 15));
+}
+
+function isAutoTranslateEnabled() {
+  return String(process.env.AUTO_TRANSLATE_ENABLED || 'true').toLowerCase() !== 'false';
+}
+
+function shouldSkipAutoTranslateContent(content) {
+  const text = String(content || '').trim();
+  if (!text) return true;
+  if (text.length < 2) return true;
+  if (text.length > Number(process.env.AUTO_TRANSLATE_MAX_CHARS || 700)) return true;
+  if (text.startsWith('/')) return true;
+  if (text.includes('```')) return true;
+
+  // Nie wysyłamy potencjalnych sekretów ani linków do zewnętrznego API tłumaczeń.
+  if (/\b(BOT_TOKEN|CLIENT_SECRET|SESSION_SECRET|TOKEN|SECRET|AUTHORIZATION|API_KEY)\b/i.test(text)) return true;
+  if (/mfa\.[a-z0-9_-]{20,}/i.test(text)) return true;
+  if (/https?:\/\/|discord\.gg\/|\b[a-z0-9-]+\.[a-z]{2,}\b/i.test(text)) return true;
+
+  return false;
+}
+
+async function translateTextAuto(text, targetLang) {
+  const apiUrl = process.env.TRANSLATE_API_URL || process.env.LIBRETRANSLATE_URL || 'https://libretranslate.com/translate';
+  const apiKey = process.env.TRANSLATE_API_KEY || process.env.LIBRETRANSLATE_API_KEY || '';
+
+  const body = {
+    q: text,
+    source: 'auto',
+    target: targetLang,
+    format: 'text',
+  };
+  if (apiKey) body.api_key = apiKey;
+
+  const res = await axios.post(apiUrl, body, {
+    timeout: Number(process.env.AUTO_TRANSLATE_TIMEOUT_MS || 12000),
+    headers: { 'Content-Type': 'application/json' },
+  });
+
+  return String(res.data?.translatedText || res.data?.translation || '').trim();
+}
+
+async function handleSupportAutoTranslate(message) {
+  if (!isAutoTranslateEnabled()) return;
+  if (!message.guild || message.author.bot) return;
+  if (message.guild.id !== getSupportGuildId()) return;
+  if (shouldSkipAutoTranslateContent(message.content)) return;
+
+  const targets = getAutoTranslateTargets();
+  if (!targets.length) return;
+
+  const original = String(message.content || '').trim();
+  const fields = [];
+
+  for (const lang of targets) {
+    try {
+      const translated = await translateTextAuto(original, lang);
+      if (!translated) continue;
+      if (translated.toLowerCase() === original.toLowerCase()) continue;
+
+      fields.push({
+        name: TRANSLATE_LANG_LABELS[lang] || lang.toUpperCase(),
+        value: translated.slice(0, Number(process.env.AUTO_TRANSLATE_FIELD_MAX_CHARS || 500)),
+        inline: false,
+      });
+    } catch (err) {
+      console.warn(`AutoTranslate ${lang} error:`, err.response?.data || err.message);
+    }
+  }
+
+  if (!fields.length) return;
+
+  // Discord embed ma limity, więc przy wielu językach dzielimy tłumaczenia na kilka wiadomości.
+  const chunkSize = Number(process.env.AUTO_TRANSLATE_FIELDS_PER_EMBED || 5);
+  const chunks = [];
+  for (let i = 0; i < fields.length; i += chunkSize) chunks.push(fields.slice(i, i + chunkSize));
+
+  for (let i = 0; i < chunks.length; i++) {
+    const payload = {
+      embeds: [embed(
+        '#60a5fa',
+        i === 0 ? '🌍 Automatyczne tłumaczenie' : '🌍 Automatyczne tłumaczenie — ciąg dalszy',
+        `Wiadomość od <@${message.author.id}> przetłumaczona dla supportu.`,
+        chunks[i]
+      )],
+      allowedMentions: { repliedUser: false, parse: [] },
+    };
+
+    if (i === 0) {
+      await message.reply(payload).catch(() => {});
+    } else {
+      await message.channel.send(payload).catch(() => {});
+    }
+  }
+}
+
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const CONFIG_PATH = path.join(__dirname, 'config.json');
 let config = loadConfig();
@@ -961,6 +1095,12 @@ client.on('messageCreate', async (message) => {
   if (!message.guild || message.author.bot) return;
   const gc = getGuildConfig(message.guild.id);
   maybeAddFastJoinRisk(message, gc);
+});
+
+
+
+client.on('messageCreate', async (message) => {
+  await handleSupportAutoTranslate(message).catch(() => {});
 });
 
 // ─── ANTISCAM ──────────────────────────────────────────────────────────────
@@ -2808,47 +2948,32 @@ if (commandName === 'antiraid') {
   if (commandName === 'verification') {
     const sub = interaction.options.getSubcommand();
     if (sub === 'setup') {
+      await interaction.deferReply({ ephemeral: true });
+
       const role = interaction.options.getRole('rola');
+      if (!gc.verification) {
+        gc.verification = { enabled: false, roleId: null, unverifiedRoleId: null, channelId: null };
+      }
+
       gc.verification.roleId = role.id;
 
-      let unverifiedRole = interaction.guild.roles.cache.find(r => r.name === 'Niezweryfikowany');
-
-      if (!unverifiedRole) {
-        unverifiedRole = await interaction.guild.roles.create({
-          name: 'Niezweryfikowany',
-          color: '#747d8c',
-          reason: 'FenixExelent Verification',
-        });
-      }
-
-      gc.verification.unverifiedRoleId = unverifiedRole.id;
-
-      // Ustaw uprawnienia: Niezweryfikowany widzi tylko kanał weryfikacji
-      const verifyChannelId = gc.verification.channelId;
-      for (const [, ch] of interaction.guild.channels.cache) {
-        try {
-          if (verifyChannelId && ch.id === verifyChannelId) {
-            await ch.permissionOverwrites.edit(unverifiedRole, {
-              ViewChannel: true,
-              ReadMessageHistory: true,
-              SendMessages: true,
-            });
-          } else if (ch.type === ChannelType.GuildText || ch.type === ChannelType.GuildVoice || ch.type === ChannelType.GuildCategory) {
-            await ch.permissionOverwrites.edit(unverifiedRole, {
-              ViewChannel: false,
-            });
-          }
-        } catch {}
-      }
-
+      const setup = await ensureVerificationForAntiAlt(interaction.guild, gc);
+      gc.verification.enabled = true;
       saveConfig();
-      return interaction.reply({
+
+      return interaction.editReply({
         embeds: [embed(
-          '#2ed573',
-          '✅ Weryfikacja skonfigurowana',
-          `Rola po weryfikacji: <@&${role.id}>\nRola przed weryfikacją: <@&${unverifiedRole.id}>\nNowi użytkownicy dostaną rolę Niezweryfikowany. Po nadaniu roli Member bot ją usunie.`
+          setup.ok ? '#2ed573' : '#ffa502',
+          setup.ok ? '✅ Weryfikacja skonfigurowana' : '⚠️ Weryfikacja częściowo skonfigurowana',
+          setup.ok
+            ? 'System weryfikacji jest gotowy. Nowi użytkownicy mogą dostać rolę Niezweryfikowany, a po kliknięciu panelu dostaną rolę zweryfikowaną.'
+            : 'Nie udało się w pełni utworzyć roli/kanału albo ustawić uprawnień. Sprawdź, czy bot ma Administratora lub Manage Roles + Manage Channels.',
+          [
+            { name: 'Rola po weryfikacji', value: `<@&${role.id}>`, inline: true },
+            { name: 'Rola przed weryfikacją', value: setup.unverifiedRole ? `<@&${setup.unverifiedRole.id}>` : 'Brak', inline: true },
+            { name: 'Kanał weryfikacji', value: setup.verifyChannel ? `<#${setup.verifyChannel.id}>` : 'Brak', inline: true },
+          ]
         )],
-        ephemeral: true
       });
     }
     if (sub === 'on')  { gc.verification.enabled = true;  saveConfig(); return interaction.reply({ embeds: [embed('#2ed573', '✅ Weryfikacja włączona',  'System weryfikacji jest aktywny.')],     ephemeral: true }); }
