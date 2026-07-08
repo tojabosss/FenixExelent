@@ -80,6 +80,11 @@ function defaultGuildConfig() {
       muteMinutes: 60,
       deleteMessage: true,
       logChannel: null,
+      // Blokuje podejrzane obrazki/screeny scam.
+      blockScamImages: true,
+      // Tryb ostry: blokuje też same obrazki bez tekstu poza kanałami zgłoszeń scam.
+      // Bez OCR bot nie potrafi przeczytać tekstu ze screena, więc to zabezpieczenie jest celowo agresywne.
+      blockImageOnlyScamScreenshots: true,
       whitelistedDomains: [
         'discord.com',
         'discord.gg',
@@ -283,28 +288,6 @@ function extractDomains(text) {
   return domains;
 }
 
-const TRUSTED_DOMAINS = [
-  'discord.com',
-  'discord.gg',
-  'discordapp.com',
-  'youtube.com',
-  'youtu.be',
-  'twitch.tv',
-  'github.com',
-  'google.com',
-  'reddit.com',
-  'x.com',
-  'twitter.com',
-  'tiktok.com',
-  'instagram.com',
-  'facebook.com',
-  'steamcommunity.com',
-  'steampowered.com',
-  'crypto.com',
-  'coinbase.com',
-  'binance.com'
-];
-
 const DEFAULT_BLOCKED_DOMAINS = [
   // IP loggery / trackery
   'grabify.link',
@@ -381,10 +364,7 @@ const DEFAULT_BLOCKED_DOMAINS = [
   'steam-support.net',
   'steam-security.net',
 
-  // Crypto / casino / fake reward scam — przykłady jak ze screenów
-  'buzzium.com',
-  'tornavlin.com',
-  'fomavlin.com',
+  // Crypto scam
   'crypto-airdrop.xyz',
   'bitcoin-giveaway.xyz',
   'eth-airdrop.xyz',
@@ -396,13 +376,6 @@ const DEFAULT_BLOCKED_DOMAINS = [
   'crypto-reward.net',
   'crypto-airdrop.net',
   'claim-airdrop.net',
-  'usdt-bonus.xyz',
-  'claim-usdt.xyz',
-  'free-usdt.xyz',
-  'beast-bonus.xyz',
-  'mrbeast-giveaway.xyz',
-  'casino-bonus.xyz',
-  'wallet-reward.xyz',
 
   // Rewards / gift scam
   'epicgift.xyz',
@@ -415,6 +388,31 @@ const DEFAULT_BLOCKED_DOMAINS = [
   'skinbonus.net',
   'skins-drop.net',
   'free-skins.net',
+
+  // Crypto / casino scam z reklam i fałszywych wypłat
+  'buzzium.com',
+  'buzziun.com',
+  'tornavlin.com',
+  'tornawlin.com',
+  'fomavlin.com',
+  'fomnvlin.com',
+  'formavlin.com',
+  'formnvlin.com',
+  'buzzium.net',
+  'buzzium.org',
+  'tornavlin.net',
+  'tornavlin.org',
+  'fomavlin.net',
+  'fomavlin.org',
+  'beast-casino.com',
+  'mrbeast-casino.com',
+  'mrbeast-bonus.com',
+  'beast-bonus.com',
+  'free-usdt.com',
+  'claim-usdt.com',
+  'usdt-reward.com',
+  'crypto-bonus.com',
+  'wallet-bonus.com',
 
   // Typosquatting
   'disc0rd.com',
@@ -435,21 +433,18 @@ const SUSPICIOUS_TLDS = [
   'vip',
   'site',
   'online',
+  'icu',
   'shop',
   'store',
-  'icu',
-  'cyou',
-  'club',
+  'app',
   'pro',
-  'live',
-  'fun',
   'lol',
-  'link',
-  'cloud',
+  'fun',
   'quest',
-  'monster',
-  'sbs',
-  'world'
+  'cyou',
+  'website',
+  'rest',
+  'buzz'
 ];
 
 const SUSPICIOUS_KEYWORDS = [
@@ -462,35 +457,60 @@ const SUSPICIOUS_KEYWORDS = [
   'claim',
   'airdrop',
   'crypto',
+  'wallet',
+  'withdraw',
+  'withdrawal',
+  'tether',
+  'usdt',
   'bitcoin',
   'btc',
   'eth',
-  'usdt',
-  'wallet',
-  'withdraw',
-  'deposit',
   'casino',
   'bet',
-  'beast',
-  'giveaway',
+  'win',
+  'bonus',
   'promo',
-  'prize',
-  'money',
-  'cash'
+  'code'
 ];
 
-const CRYPTO_CASINO_SCAM_PATTERNS = [
+// Frazy typowe dla scamów ze screena: fałszywe wypłaty, bonusy, kody promocyjne, kasyno/crypto.
+// Bot nadal wymaga linku w wiadomości — nie usuwa zwykłych rozmów bez domeny.
+const CRYPTO_SCAM_TEXT_PATTERNS = [
   /withdrawal\s+success/i,
-  /\bwithdraw(?:al|n)?\b.*\b(?:usdt|btc|eth|crypto|wallet|bonus|reward)\b/i,
-  /\b(?:usdt|btc|eth|crypto|wallet)\b.*\b(?:withdraw|bonus|reward|claim|airdrop|giveaway)\b/i,
-  /\bpromo\s*code\b/i,
-  /\bbonus\s*(?:code|reward|usdt|btc|eth)\b/i,
-  /\bclaim\s+(?:your\s+)?(?:reward|bonus|airdrop|nitro|usdt|crypto|prize)\b/i,
-  /\b(?:casino|betting?|gambl(?:e|ing))\b.*\b(?:bonus|promo|code|usdt|crypto|reward|withdraw)\b/i,
-  /\b(?:mr\s*beast|beast\s*games?)\b.*\b(?:casino|crypto|bonus|usdt|withdraw|reward|promo)\b/i,
-  /\$\s*\d{2,7}\s*(?:usdt|usd|btc|eth)\b/i,
-  /\b\d{2,7}\s*(?:usdt|btc|eth)\b/i,
+  /your\s+withdrawal\s+of/i,
+  /\bwithdraw(?:al)?\b/i,
+  /\b(?:usdt|tether|crypto|bitcoin|btc|ethereum|eth)\b/i,
+  /\b(?:bonus|promo\s*code|lucky\s*code|claim|reward|receive)\b/i,
+  /\b(?:casino|bet|slots?|gambling)\b/i,
+  /\$\s?\d{3,}/i,
+  /\b(?:connect\s+wallet|wallet\s+address|enter\s+(?:the\s+)?(?:special\s+)?(?:promo\s+)?code)\b/i
 ];
+
+const SAFE_DOMAINS = [
+  'discord.com',
+  'discord.gg',
+  'discordapp.com',
+  'youtube.com',
+  'youtu.be',
+  'twitch.tv',
+  'github.com',
+  'google.com',
+  'reddit.com',
+  'x.com',
+  'twitter.com'
+];
+
+function isSafeDomain(domain) {
+  const clean = normalizeDomainInput(domain);
+  return SAFE_DOMAINS.some(safe => clean === safe || clean.endsWith(`.${safe}`));
+}
+
+function getCryptoScamScore(text = '') {
+  const value = String(text || '');
+  return CRYPTO_SCAM_TEXT_PATTERNS.reduce((score, pattern) => {
+    return score + (pattern.test(value) ? 1 : 0);
+  }, 0);
+}
 
 function normalizeDomainInput(input) {
   return String(input || '')
@@ -524,15 +544,30 @@ function normalizeBlockedDomains(domains = []) {
   return output;
 }
 
+function isSuspiciousDomain(domain, messageText = '') {
+  const clean = normalizeDomainInput(domain);
+  const tld = clean.split('.').pop();
+  const hasBadKeyword = SUSPICIOUS_KEYWORDS.some(word => clean.includes(word));
+  const scamScore = getCryptoScamScore(messageText);
+
+  if (isSafeDomain(clean)) return false;
+
+  return (
+    // np. crypto-bonus.xyz, claim-reward.click
+    (SUSPICIOUS_TLDS.includes(tld) && hasBadKeyword) ||
+
+    // np. domena z nazwą casino/bonus/wallet + tekst o USDT, wypłacie lub kodzie promocyjnym
+    (hasBadKeyword && scamScore >= 2) ||
+
+    // nawet neutralnie wyglądająca nowa domena, jeśli wiadomość wygląda jak scam crypto/kasyno
+    (scamScore >= 4)
+  );
+}
+
 function domainMatches(domain, rule) {
   const clean = normalizeDomainInput(domain);
   const target = normalizeDomainInput(rule);
   return clean === target || clean.endsWith(`.${target}`);
-}
-
-function isTrustedDomain(domain) {
-  const clean = normalizeDomainInput(domain);
-  return TRUSTED_DOMAINS.some(trusted => domainMatches(clean, trusted));
 }
 
 function isBlockedDomain(domain, blockedDomains = DEFAULT_BLOCKED_DOMAINS) {
@@ -540,33 +575,44 @@ function isBlockedDomain(domain, blockedDomains = DEFAULT_BLOCKED_DOMAINS) {
   return blockedDomains.some(blocked => domainMatches(clean, blocked));
 }
 
-function hasCryptoCasinoScamText(text) {
-  const content = String(text || '');
-  return CRYPTO_CASINO_SCAM_PATTERNS.some(pattern => pattern.test(content));
+function isImageAttachment(att) {
+  const contentType = String(att.contentType || '').toLowerCase();
+  const name = String(att.name || att.url || '').toLowerCase().split('?')[0];
+
+  return (
+    contentType.startsWith('image/') ||
+    /\.(png|jpe?g|webp|gif|bmp)$/i.test(name)
+  );
 }
 
-function isSuspiciousDomain(domain, text = '') {
-  const clean = normalizeDomainInput(domain);
-  if (!clean || isTrustedDomain(clean)) return false;
-
-  const parts = clean.split('.');
-  const tld = parts.pop();
-  const name = parts.join('.');
-  const hits = SUSPICIOUS_KEYWORDS.filter(word => name.includes(word));
-
-  if (SUSPICIOUS_TLDS.includes(tld) && hits.length >= 1) return true;
-  if (hits.length >= 2) return true;
-  if (hasCryptoCasinoScamText(text) && hits.length >= 1) return true;
-
-  return false;
+function hasImageAttachment(message) {
+  return message.attachments?.some(isImageAttachment);
 }
 
-function scanMessageForScam(content, gc) {
-  const text = String(content || '');
+function getAttachmentNames(message) {
+  return [...message.attachments.values()]
+    .filter(isImageAttachment)
+    .map(a => a.name || a.url || 'obraz')
+    .slice(0, 5)
+    .join(', ');
+}
+
+function isScamReportChannel(channel) {
+  const name = String(channel?.name || '').toLowerCase();
+
+  return (
+    name.includes('zgłoszenia-scam') ||
+    name.includes('zgloszenia-scam') ||
+    name.includes('scam-domain') ||
+    name.includes('analiza-link') ||
+    name.includes('report-scam') ||
+    name.includes('scam-report')
+  );
+}
+
+function scanMessageForScam(message, gc) {
+  const text = String(message.content || '');
   const domains = extractDomains(text);
-
-  // Ważne: łączymy wbudowaną bazę z domenami dodanymi komendą /scamdomains.
-  // Wcześniej pusta tablica w configu mogła wyłączać domyślną bazę domen.
   const blocked = normalizeBlockedDomains([
     ...DEFAULT_BLOCKED_DOMAINS,
     ...(gc.antiscam?.blockedDomains || []),
@@ -575,7 +621,7 @@ function scanMessageForScam(content, gc) {
   if (gc.antiscam) gc.antiscam.blockedDomains = blocked;
 
   const foundDomain = domains.find(domain =>
-    !isTrustedDomain(domain) &&
+    !isSafeDomain(domain) &&
     (isBlockedDomain(domain, blocked) || isSuspiciousDomain(domain, text))
   );
 
@@ -585,19 +631,43 @@ function scanMessageForScam(content, gc) {
       value: foundDomain,
       reason: isBlockedDomain(foundDomain, blocked)
         ? 'Domena jest na liście blokowanych domen.'
-        : 'Podejrzana domena pasuje do wzorca scam/crypto/casino.'
+        : 'Podejrzana domena pasuje do wzorca scam/crypto/casino.',
     };
   }
 
-  // Blokuj też wiadomości z dowolną obcą domeną, jeżeli tekst wygląda jak scam
-  // typu „Withdrawal Success”, „$5000 USDT”, „promo code”, „casino bonus”.
-  if (domains.length && hasCryptoCasinoScamText(text)) {
-    const nonTrusted = domains.find(domain => !isTrustedDomain(domain));
+  const scamScore = getCryptoScamScore(text);
+
+  if (domains.length && scamScore >= 3) {
+    const nonTrusted = domains.find(domain => !isSafeDomain(domain));
     if (nonTrusted) {
       return {
         type: 'text+domain',
         value: nonTrusted,
-        reason: 'Wiadomość z linkiem zawiera tekst typowy dla crypto/casino scam.'
+        reason: 'Wiadomość z linkiem zawiera tekst typowy dla crypto/casino scam.',
+      };
+    }
+  }
+
+  if (gc.antiscam?.blockScamImages && hasImageAttachment(message)) {
+    if (text.trim() && scamScore >= 2) {
+      return {
+        type: 'image+scam-text',
+        value: getAttachmentNames(message) || 'screen scam',
+        reason: 'Obraz/screen wysłany z opisem typowym dla crypto/casino scam.',
+      };
+    }
+
+    // Bez OCR bot nie czyta tekstu ze screena. Ten tryb usuwa same obrazki bez opisu
+    // poza kanałami zgłoszeń scam, aby blokować reklamowe screeny oszustw.
+    if (
+      gc.antiscam?.blockImageOnlyScamScreenshots === true &&
+      !text.trim() &&
+      !isScamReportChannel(message.channel)
+    ) {
+      return {
+        type: 'image-only',
+        value: getAttachmentNames(message) || 'obraz bez tekstu',
+        reason: 'Obraz bez opisu został zablokowany w trybie ochrony przed scam screenami.',
       };
     }
   }
@@ -605,13 +675,14 @@ function scanMessageForScam(content, gc) {
   return null;
 }
 
+
 client.on('messageCreate', async (message) => {
   if (!message.guild || message.author.bot) return;
 
   const gc = getGuildConfig(message.guild.id);
   if (!gc.antiscam?.enabled) return;
 
-  const scam = scanMessageForScam(message.content, gc);
+  const scam = scanMessageForScam(message, gc);
   if (!scam) return;
 
   const found = scam.value;
@@ -645,9 +716,10 @@ client.on('messageCreate', async (message) => {
     embeds: [embed(
       '#ff4757',
       '🔍 Scam wykryty!',
-      `<@${message.author.id}>, Twoja wiadomość wygląda jak scam link i została zablokowana.`,
+      `<@${message.author.id}>, Twoja wiadomość wygląda jak scam i została zablokowana.`,
       [
-        { name: 'Wykryto', value: `\`${found}\``, inline: true },
+        { name: 'Wykryto', value: `\`${String(found).slice(0, 180)}\``, inline: true },
+        { name: 'Typ', value: scam.type, inline: true },
         { name: 'Powód', value: scam.reason, inline: false },
         { name: 'Mute', value: `${gc.antiscam.muteMinutes || 60} min`, inline: true }
       ]
@@ -658,11 +730,12 @@ client.on('messageCreate', async (message) => {
 
   await sendLog(message.guild, gc.antiscam.logChannel, embed(
     '#ff4757',
-    '🔍 AntiScam — zablokowany scam link',
-    `Wykryto scam link od ${message.author.tag}.`,
+    '🔍 AntiScam — zablokowana wiadomość scam',
+    `Wykryto scam od ${message.author.tag}.`,
     [
       { name: 'Użytkownik', value: `<@${message.author.id}>`, inline: true },
-      { name: 'Wykryto', value: `\`${found}\``, inline: true },
+      { name: 'Wykryto', value: `\`${String(found).slice(0, 180)}\``, inline: true },
+      { name: 'Typ', value: scam.type, inline: true },
       { name: 'Powód', value: scam.reason, inline: false },
       { name: 'Kanał', value: `<#${message.channel.id}>`, inline: true },
       { name: 'Treść', value: message.content.slice(0, 500) || 'Brak treści', inline: false }
@@ -1117,6 +1190,8 @@ if (commandName === 'help') {
         muteMinutes: 60,
         deleteMessage: true,
         logChannel: null,
+        blockScamImages: true,
+        blockImageOnlyScamScreenshots: true,
         whitelistedDomains: [],
         blockedDomains: [...DEFAULT_BLOCKED_DOMAINS],
         stats: { detected: 0, deleted: 0, muted: 0 },
