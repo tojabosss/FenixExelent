@@ -17,6 +17,14 @@ const commands = [
   new SlashCommandBuilder().setName('servercheck').setDescription('🧪 Sprawdź Security Score serwera'),
 
   new SlashCommandBuilder()
+    .setName('supportlang')
+    .setDescription('🌍 Konfiguracja języków na support serwerze')
+    .addSubcommand(s => s.setName('setup').setDescription('Utwórz role, kanały i panel wyboru języka'))
+    .addSubcommand(s => s.setName('panel').setDescription('Wyślij ponownie panel wyboru języka'))
+    .addSubcommand(s => s.setName('status').setDescription('Pokaż status języków supportu'))
+    .addSubcommand(s => s.setName('off').setDescription('Wyłącz przyciski wyboru języka')),
+
+  new SlashCommandBuilder()
     .setName('securityignore')
     .setDescription('🧾 Ignorowane kanały/role dla automatycznych zabezpieczeń')
     .addSubcommand(s => s.setName('channel').setDescription('Dodaj ignorowany kanał').addChannelOption(o => o.setName('kanal').setDescription('Kanał').setRequired(true)))

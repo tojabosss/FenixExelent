@@ -32,252 +32,6 @@ const path    = require('path');
 const fs = require('fs');
 const app = express();
 
-
-// ─── SUPPORT AUTO TRANSLATE ────────────────────────────────────────────────
-// Automatyczne tłumaczenie działa tylko na support serwerze.
-// Tryb SMART robi dużo mniej zapytań do API:
-// - wiadomość EN -> tłumaczy tylko na PL
-// - wiadomość PL -> tłumaczy tylko na EN
-// - inny język -> tłumaczy na PL i EN
-// Dzięki temu zwykłe "hello" nie robi 5/15 zapytań.
-// Render ENV polecane:
-// SUPPORT_GUILD_ID=ID_TWOJEGO_SUPPORT_SERWERA
-// AUTO_TRANSLATE_ENABLED=true
-// AUTO_TRANSLATE_MODE=smart
-// AUTO_TRANSLATE_SMART_TARGETS=pl,en
-// TRANSLATE_API_URL=https://libretranslate.com/translate
-// TRANSLATE_API_KEY=opcjonalny_klucz_api
-const TRANSLATE_LANG_LABELS = {
-  pl: '🇵🇱 Polski',
-  en: '🇬🇧 English',
-  de: '🇩🇪 Deutsch',
-  es: '🇪🇸 Español',
-  fr: '🇫🇷 Français',
-  uk: '🇺🇦 Українська',
-  ru: '🇷🇺 Русский',
-  it: '🇮🇹 Italiano',
-  pt: '🇵🇹 Português',
-  nl: '🇳🇱 Nederlands',
-  tr: '🇹🇷 Türkçe',
-  ja: '🇯🇵 日本語',
-  ko: '🇰🇷 한국어',
-  zh: '🇨🇳 中文',
-  ar: '🇸🇦 العربية',
-};
-
-let autoTranslatePausedUntil = 0;
-const autoTranslateCache = new Map();
-
-function getSupportGuildId() {
-  return process.env.SUPPORT_GUILD_ID || '1492793536930910310';
-}
-
-function parseLangList(value, fallback) {
-  return String(value || fallback || '')
-    .split(',')
-    .map(x => x.trim().toLowerCase())
-    .filter(Boolean)
-    .filter((value, index, arr) => arr.indexOf(value) === index);
-}
-
-function getAutoTranslateMode() {
-  return String(process.env.AUTO_TRANSLATE_MODE || 'smart').toLowerCase();
-}
-
-function getAutoTranslateTargets() {
-  const maxTargets = Number(process.env.AUTO_TRANSLATE_MAX_TARGETS || 5);
-  return parseLangList(
-    process.env.AUTO_TRANSLATE_LANGS || process.env.SUPPORT_TRANSLATE_LANGS,
-    'pl,en,de,es,fr'
-  ).slice(0, maxTargets);
-}
-
-function getSmartTranslateTargets() {
-  return parseLangList(process.env.AUTO_TRANSLATE_SMART_TARGETS, 'pl,en')
-    .slice(0, Number(process.env.AUTO_TRANSLATE_MAX_TARGETS || 2));
-}
-
-function isAutoTranslateEnabled() {
-  return String(process.env.AUTO_TRANSLATE_ENABLED || 'true').toLowerCase() !== 'false';
-}
-
-function shouldSkipAutoTranslateContent(content) {
-  const text = String(content || '').trim();
-  if (!text) return true;
-  if (text.length < 2) return true;
-  if (text.length > Number(process.env.AUTO_TRANSLATE_MAX_CHARS || 700)) return true;
-  if (text.startsWith('/')) return true;
-  if (text.includes('```')) return true;
-
-  // Nie wysyłamy potencjalnych sekretów ani linków do zewnętrznego API tłumaczeń.
-  if (/\b(BOT_TOKEN|CLIENT_SECRET|SESSION_SECRET|TOKEN|SECRET|AUTHORIZATION|API_KEY)\b/i.test(text)) return true;
-  if (/mfa\.[a-z0-9_-]{20,}/i.test(text)) return true;
-  if (/https?:\/\/|discord\.gg\/|\b[a-z0-9-]+\.[a-z]{2,}\b/i.test(text)) return true;
-
-  return false;
-}
-
-function guessSourceLanguage(text) {
-  const value = String(text || '').toLowerCase();
-
-  if (/[ąćęłńóśźż]/i.test(value) || /\b(cześć|czesc|siema|witam|potrzebuję|potrzebuje|pomocy|działa|dziala|dziękuję|dziekuje|proszę|prosze|nie mogę|nie moge)\b/i.test(value)) return 'pl';
-  if (/[äöüß]/i.test(value) || /\b(hallo|hilfe|danke|bitte|nicht|ich|mein|server|problem)\b/i.test(value)) return 'de';
-  if (/[áéíóúñ¿¡]/i.test(value) || /\b(hola|ayuda|gracias|por favor|necesito|problema)\b/i.test(value)) return 'es';
-  if (/[àâçéèêëîïôùûüÿœ]/i.test(value) || /\b(bonjour|merci|aide|problème|probleme|besoin|serveur)\b/i.test(value)) return 'fr';
-  if (/[іїєґ]/i.test(value)) return 'uk';
-  if (/[а-яё]/i.test(value)) return 'ru';
-  if (/[\u3040-\u30ff]/.test(value)) return 'ja';
-  if (/[\uac00-\ud7af]/.test(value)) return 'ko';
-  if (/[\u4e00-\u9fff]/.test(value)) return 'zh';
-  if (/[\u0600-\u06ff]/.test(value)) return 'ar';
-
-  // Krótkie typowo angielskie wiadomości, np. "hello", "help", "thanks".
-  if (/\b(hello|hi|hey|help|thanks|thank you|need|bot|setup|problem|server|discord|please)\b/i.test(value)) return 'en';
-
-  return null;
-}
-
-function resolveAutoTranslateTargets(original, configuredTargets) {
-  const mode = getAutoTranslateMode();
-  const source = guessSourceLanguage(original);
-
-  // Tryb legacy/all: tłumacz na listę z AUTO_TRANSLATE_LANGS, ale pomiń rozpoznany język źródłowy.
-  if (mode === 'all' || mode === 'legacy') {
-    return configuredTargets.filter(lang => lang !== source);
-  }
-
-  // Tryb smart: każda wiadomość jest tłumaczona, ale tylko do najważniejszych języków supportu.
-  const smartTargets = getSmartTranslateTargets();
-  let targets = smartTargets.filter(lang => lang !== source);
-
-  // Jeśli ktoś pisze po angielsku, support PL dostaje tłumaczenie PL.
-  if (source === 'en' && smartTargets.includes('pl')) targets = ['pl'];
-
-  // Jeśli ktoś pisze po polsku, support międzynarodowy dostaje EN.
-  if (source === 'pl' && smartTargets.includes('en')) targets = ['en'];
-
-  // Jeśli język nieznany lub inny, tłumacz tylko na smart targets, np. PL + EN.
-  if (!targets.length && source && smartTargets.some(lang => lang !== source)) {
-    targets = smartTargets.filter(lang => lang !== source);
-  }
-  if (!targets.length && !source) targets = smartTargets;
-
-  return targets.slice(0, Number(process.env.AUTO_TRANSLATE_MAX_TARGETS || 2));
-}
-
-function normalizeTranslateError(err) {
-  const data = err?.response?.data;
-  if (typeof data === 'string') return data;
-  if (data?.error) return String(data.error);
-  return err?.message || String(err);
-}
-
-function isRateLimitTranslateError(err) {
-  const msg = normalizeTranslateError(err).toLowerCase();
-  return msg.includes('too many') || msg.includes('slowdown') || msg.includes('rate limit') || msg.includes('429');
-}
-
-async function translateTextAuto(text, targetLang) {
-  const apiUrl = process.env.TRANSLATE_API_URL || process.env.LIBRETRANSLATE_URL || 'https://libretranslate.com/translate';
-  const apiKey = process.env.TRANSLATE_API_KEY || process.env.LIBRETRANSLATE_API_KEY || '';
-  const original = String(text || '').trim();
-  const cacheKey = `${targetLang}:${original.toLowerCase()}`;
-
-  if (autoTranslateCache.has(cacheKey)) return autoTranslateCache.get(cacheKey);
-  if (Date.now() < autoTranslatePausedUntil) return '';
-
-  const body = {
-    q: original,
-    source: 'auto',
-    target: targetLang,
-    format: 'text',
-  };
-  if (apiKey) body.api_key = apiKey;
-
-  try {
-    const res = await axios.post(apiUrl, body, {
-      timeout: Number(process.env.AUTO_TRANSLATE_TIMEOUT_MS || 12000),
-      headers: { 'Content-Type': 'application/json' },
-    });
-
-    const translated = String(res.data?.translatedText || res.data?.translation || '').trim();
-    if (translated) {
-      autoTranslateCache.set(cacheKey, translated);
-      if (autoTranslateCache.size > 500) {
-        const firstKey = autoTranslateCache.keys().next().value;
-        autoTranslateCache.delete(firstKey);
-      }
-    }
-    return translated;
-  } catch (err) {
-    if (isRateLimitTranslateError(err)) {
-      const pauseMs = Number(process.env.AUTO_TRANSLATE_RATE_LIMIT_PAUSE_MS || 90_000);
-      autoTranslatePausedUntil = Date.now() + pauseMs;
-      console.warn(`AutoTranslate paused for ${Math.round(pauseMs / 1000)}s:`, normalizeTranslateError(err));
-      return '';
-    }
-    throw err;
-  }
-}
-
-async function handleSupportAutoTranslate(message) {
-  if (!isAutoTranslateEnabled()) return;
-  if (!message.guild || message.author.bot) return;
-  if (message.guild.id !== getSupportGuildId()) return;
-  if (shouldSkipAutoTranslateContent(message.content)) return;
-  if (Date.now() < autoTranslatePausedUntil) return;
-
-  const original = String(message.content || '').trim();
-  const targets = resolveAutoTranslateTargets(original, getAutoTranslateTargets());
-  if (!targets.length) return;
-
-  const fields = [];
-
-  for (const lang of targets) {
-    try {
-      const translated = await translateTextAuto(original, lang);
-      if (!translated) continue;
-      if (translated.toLowerCase() === original.toLowerCase()) continue;
-
-      fields.push({
-        name: TRANSLATE_LANG_LABELS[lang] || lang.toUpperCase(),
-        value: translated.slice(0, Number(process.env.AUTO_TRANSLATE_FIELD_MAX_CHARS || 500)),
-        inline: false,
-      });
-
-      // Publiczne darmowe API nie lubi serii requestów. Mały delay pomaga ograniczyć limity.
-      const delayMs = Number(process.env.AUTO_TRANSLATE_DELAY_MS || 750);
-      if (delayMs > 0) await new Promise(resolve => setTimeout(resolve, delayMs));
-    } catch (err) {
-      console.warn(`AutoTranslate ${lang} error:`, err.response?.data || err.message);
-    }
-  }
-
-  if (!fields.length) return;
-
-  const chunkSize = Number(process.env.AUTO_TRANSLATE_FIELDS_PER_EMBED || 5);
-  const chunks = [];
-  for (let i = 0; i < fields.length; i += chunkSize) chunks.push(fields.slice(i, i + chunkSize));
-
-  for (let i = 0; i < chunks.length; i++) {
-    const payload = {
-      embeds: [embed(
-        '#60a5fa',
-        i === 0 ? '🌍 Automatyczne tłumaczenie' : '🌍 Automatyczne tłumaczenie — ciąg dalszy',
-        `Wiadomość od <@${message.author.id}> przetłumaczona dla supportu.`,
-        chunks[i]
-      )],
-      allowedMentions: { repliedUser: false, parse: [] },
-    };
-
-    if (i === 0) {
-      await message.reply(payload).catch(() => {});
-    } else {
-      await message.channel.send(payload).catch(() => {});
-    }
-  }
-}
-
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const CONFIG_PATH = path.join(__dirname, 'config.json');
 let config = loadConfig();
@@ -411,6 +165,16 @@ verification: {
   roleId: null,
   unverifiedRoleId: null,
   channelId: null,
+},
+
+supportLanguages: {
+  enabled: false,
+  guildId: null,
+  verifyChannelId: null,
+  categoryId: null,
+  supported: ['pl', 'en', 'tr', 'de', 'fr'],
+  roleIds: {},
+  channelIds: {},
 },
 
 setup: {
@@ -844,6 +608,239 @@ async function ensureVerificationForAntiAlt(guild, gc) {
   };
 }
 
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  SUPPORT SERVER LANGUAGE VERIFICATION
+//  Bez zewnętrznych API i bez limitów: użytkownik wybiera język przyciskiem.
+// ═══════════════════════════════════════════════════════════════════════════
+const SUPPORT_LANGUAGE_DEFINITIONS = [
+  { code: 'pl', label: 'Polski',   emoji: '🇵🇱', roleName: '🌍 Polski',   channelName: '💬│chat-pl', topic: 'Polski kanał supportu FenixExelentSecurity.' },
+  { code: 'en', label: 'English',  emoji: '🇬🇧', roleName: '🌍 English',  channelName: '💬│chat-en', topic: 'English FenixExelentSecurity support channel.' },
+  { code: 'tr', label: 'Türkçe',   emoji: '🇹🇷', roleName: '🌍 Türkçe',   channelName: '💬│chat-tr', topic: 'Türkçe FenixExelentSecurity destek kanalı.' },
+  { code: 'de', label: 'Deutsch',  emoji: '🇩🇪', roleName: '🌍 Deutsch',  channelName: '💬│chat-de', topic: 'Deutscher FenixExelentSecurity Support-Kanal.' },
+  { code: 'fr', label: 'Français', emoji: '🇫🇷', roleName: '🌍 Français', channelName: '💬│chat-fr', topic: 'Canal de support français FenixExelentSecurity.' },
+];
+
+function getSupportGuildIdFromEnv() {
+  return String(process.env.SUPPORT_GUILD_ID || '').trim();
+}
+
+function isConfiguredSupportGuild(guild) {
+  const supportGuildId = getSupportGuildIdFromEnv();
+  return !!supportGuildId && guild?.id === supportGuildId;
+}
+
+function ensureSupportLanguagesConfig(gc) {
+  if (!gc.supportLanguages) {
+    gc.supportLanguages = {
+      enabled: false,
+      guildId: null,
+      verifyChannelId: null,
+      categoryId: null,
+      supported: ['pl', 'en', 'tr', 'de', 'fr'],
+      roleIds: {},
+      channelIds: {},
+    };
+  }
+  if (!Array.isArray(gc.supportLanguages.supported)) gc.supportLanguages.supported = ['pl', 'en', 'tr', 'de', 'fr'];
+  if (!gc.supportLanguages.roleIds) gc.supportLanguages.roleIds = {};
+  if (!gc.supportLanguages.channelIds) gc.supportLanguages.channelIds = {};
+  return gc.supportLanguages;
+}
+
+function getSupportLanguageDefinitions(gc) {
+  const cfg = ensureSupportLanguagesConfig(gc);
+  const allowed = new Set(cfg.supported || []);
+  return SUPPORT_LANGUAGE_DEFINITIONS.filter(lang => allowed.has(lang.code));
+}
+
+async function getOrCreateRoleByName(guild, name, color, reason) {
+  let role = guild.roles.cache.find(r => r.name.toLowerCase() === String(name).toLowerCase());
+  if (!role) {
+    role = await guild.roles.create({ name, color, reason }).catch(() => null);
+  }
+  return role;
+}
+
+async function getOrCreateTextChannelByName(guild, category, name, options = {}) {
+  let channel = guild.channels.cache.find(ch => ch.type === ChannelType.GuildText && ch.name === name);
+  if (!channel) {
+    channel = await guild.channels.create({
+      name,
+      type: ChannelType.GuildText,
+      parent: category?.id || null,
+      topic: options.topic || undefined,
+      permissionOverwrites: options.permissionOverwrites || undefined,
+      reason: options.reason || 'FenixExelent support language setup',
+    }).catch(() => null);
+  } else {
+    if (category && channel.parentId !== category.id) await channel.setParent(category.id).catch(() => {});
+    if (options.topic && channel.topic !== options.topic) await channel.setTopic(options.topic).catch(() => {});
+  }
+  return channel;
+}
+
+function buildSupportLanguageRows(gc) {
+  const defs = getSupportLanguageDefinitions(gc);
+  const rows = [];
+  for (let i = 0; i < defs.length; i += 5) {
+    rows.push(new ActionRowBuilder().addComponents(
+      defs.slice(i, i + 5).map(lang => new ButtonBuilder()
+        .setCustomId(`supportlang:${lang.code}`)
+        .setLabel(`${lang.emoji} ${lang.label}`)
+        .setStyle(ButtonStyle.Primary)
+      )
+    ));
+  }
+  return rows;
+}
+
+async function sendSupportLanguagePanel(channel, gc = null) {
+  const guildConfig = gc || getGuildConfig(channel.guild.id);
+  const rows = buildSupportLanguageRows(guildConfig);
+
+  await channel.send({
+    embeds: [new EmbedBuilder()
+      .setColor('#60a5fa')
+      .setTitle('🌍 Wybierz język / Choose your language')
+      .setDescription(`🇵🇱 **Polski**
+Kliknij przycisk z językiem, którego chcesz używać na support serwerze.
+Bot nada Ci odpowiednią rolę, zweryfikuje konto i odblokuje właściwy kanał czatu.
+
+━━━━━━━━━━━━━━━━━━━━
+
+🇬🇧 **English**
+Click the language button you want to use on the support server.
+The bot will give you the correct role, verify your account and unlock the right chat channel.`)
+      .setFooter({ text: 'FenixExelent 🔥 | Support language verification' })
+      .setTimestamp()
+    ],
+    components: rows,
+  });
+}
+
+async function setupSupportLanguageSystem(guild, gc) {
+  const supportGuildId = getSupportGuildIdFromEnv();
+  if (!supportGuildId) {
+    return { ok: false, error: 'Brak SUPPORT_GUILD_ID w Render Environment.' };
+  }
+  if (guild.id !== supportGuildId) {
+    return { ok: false, error: 'Ta komenda może działać tylko na Twoim support serwerze.' };
+  }
+
+  const cfg = ensureSupportLanguagesConfig(gc);
+  cfg.enabled = true;
+  cfg.guildId = guild.id;
+
+  await guild.roles.fetch().catch(() => {});
+  await guild.channels.fetch().catch(() => {});
+
+  let verifiedRole = gc.verification?.roleId ? guild.roles.cache.get(gc.verification.roleId) : null;
+  if (!verifiedRole) verifiedRole = await getOrCreateRoleByName(guild, 'Zweryfikowany', '#22c55e', 'FenixExelent support language setup');
+
+  let unverifiedRole = gc.verification?.unverifiedRoleId ? guild.roles.cache.get(gc.verification.unverifiedRoleId) : null;
+  if (!unverifiedRole) unverifiedRole = await getOrCreateRoleByName(guild, 'Niezweryfikowany', '#747d8c', 'FenixExelent support language setup');
+
+  if (!gc.verification) gc.verification = { enabled: false, roleId: null, unverifiedRoleId: null, channelId: null };
+  if (verifiedRole) gc.verification.roleId = verifiedRole.id;
+  if (unverifiedRole) gc.verification.unverifiedRoleId = unverifiedRole.id;
+  gc.verification.enabled = true;
+
+  const verifyCategory = await getOrCreateCategory(guild, '🔐 WERYFIKACJA').catch(() => null);
+  const verifyChannel = await getOrCreateTextChannelByName(guild, verifyCategory, '✅│weryfikacja', {
+    topic: 'Wybierz język, aby uzyskać dostęp do supportu FenixExelentSecurity.',
+    reason: 'FenixExelent support language verification channel',
+    permissionOverwrites: [
+      { id: guild.roles.everyone.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory], deny: [PermissionFlagsBits.SendMessages] },
+      ...(unverifiedRole ? [{ id: unverifiedRole.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory], deny: [PermissionFlagsBits.SendMessages] }] : []),
+      ...(verifiedRole ? [{ id: verifiedRole.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory], deny: [PermissionFlagsBits.SendMessages] }] : []),
+    ],
+  });
+
+  if (verifyChannel) {
+    gc.verification.channelId = verifyChannel.id;
+    cfg.verifyChannelId = verifyChannel.id;
+  }
+
+  const category = await getOrCreateCategory(guild, '🌍 SUPPORT LANGUAGES').catch(() => null);
+  if (category) cfg.categoryId = category.id;
+
+  const createdRoles = [];
+  const createdChannels = [];
+  for (const lang of getSupportLanguageDefinitions(gc)) {
+    const role = await getOrCreateRoleByName(guild, lang.roleName, '#3b82f6', `FenixExelent support language role ${lang.code}`);
+    if (!role) continue;
+    cfg.roleIds[lang.code] = role.id;
+    createdRoles.push(role);
+
+    const permissionOverwrites = [
+      { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
+      { id: role.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+    ];
+    if (verifiedRole) permissionOverwrites.push({ id: verifiedRole.id, deny: [PermissionFlagsBits.ViewChannel] });
+    if (unverifiedRole) permissionOverwrites.push({ id: unverifiedRole.id, deny: [PermissionFlagsBits.ViewChannel] });
+
+    const channel = await getOrCreateTextChannelByName(guild, category, lang.channelName, {
+      topic: lang.topic,
+      reason: `FenixExelent support language channel ${lang.code}`,
+      permissionOverwrites,
+    });
+    if (channel) {
+      cfg.channelIds[lang.code] = channel.id;
+      createdChannels.push(channel);
+      await channel.permissionOverwrites.edit(role, {
+        ViewChannel: true,
+        SendMessages: true,
+        ReadMessageHistory: true,
+      }).catch(() => {});
+    }
+  }
+
+  if (verifyChannel) await sendSupportLanguagePanel(verifyChannel, gc).catch(() => {});
+
+  saveConfig();
+  return { ok: true, verifiedRole, unverifiedRole, verifyChannel, category, createdRoles, createdChannels };
+}
+
+async function handleSupportLanguageButton(interaction, gc) {
+  const cfg = ensureSupportLanguagesConfig(gc);
+  if (!cfg.enabled) {
+    return interaction.reply({ content: '❌ Wybór języka jest aktualnie wyłączony.', ephemeral: true });
+  }
+  if (!isConfiguredSupportGuild(interaction.guild)) {
+    return interaction.reply({ content: '❌ Ten panel działa tylko na oficjalnym support serwerze.', ephemeral: true });
+  }
+
+  const langCode = interaction.customId.split(':')[1];
+  const lang = SUPPORT_LANGUAGE_DEFINITIONS.find(item => item.code === langCode);
+  if (!lang || !cfg.roleIds?.[langCode]) {
+    return interaction.reply({ content: '❌ Ten język nie jest skonfigurowany. Użyj `/supportlang setup`.', ephemeral: true });
+  }
+
+  const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+  if (!member) return interaction.reply({ content: '❌ Nie mogę pobrać Twojego profilu.', ephemeral: true });
+
+  const allLangRoleIds = Object.values(cfg.roleIds || {}).filter(Boolean);
+  const rolesToRemove = allLangRoleIds.filter(roleId => roleId !== cfg.roleIds[langCode] && member.roles.cache.has(roleId));
+  if (rolesToRemove.length) await member.roles.remove(rolesToRemove, 'FenixExelent: zmiana języka supportu').catch(() => {});
+
+  await member.roles.add(cfg.roleIds[langCode], `FenixExelent: wybrano język ${lang.code}`).catch(() => {});
+
+  if (gc.verification?.roleId) await member.roles.add(gc.verification.roleId, 'FenixExelent: zweryfikowany przez wybór języka').catch(() => {});
+  if (gc.verification?.unverifiedRoleId) await member.roles.remove(gc.verification.unverifiedRoleId, 'FenixExelent: zakończono weryfikację językową').catch(() => {});
+
+  const channelId = cfg.channelIds?.[langCode];
+  return interaction.reply({
+    embeds: [embed(
+      '#2ed573',
+      `${lang.emoji} Język ustawiony / Language selected`,
+      `Wybrano: **${lang.label}**
+${channelId ? `Twój kanał: <#${channelId}>` : 'Kanał językowy zostanie odblokowany, jeśli jest skonfigurowany.'}`
+    )],
+    ephemeral: true,
+  });
+}
+
 async function maybeHandleAntiAlt(member) {
   const gc = getGuildConfig(member.guild.id);
   if (!gc.antialt?.enabled) return;
@@ -1207,12 +1204,6 @@ client.on('messageCreate', async (message) => {
   if (!message.guild || message.author.bot) return;
   const gc = getGuildConfig(message.guild.id);
   maybeAddFastJoinRisk(message, gc);
-});
-
-
-
-client.on('messageCreate', async (message) => {
-  await handleSupportAutoTranslate(message).catch(() => {});
 });
 
 // ─── ANTISCAM ──────────────────────────────────────────────────────────────
@@ -2043,7 +2034,7 @@ if (commandName === 'help') {
         .setTitle('🔥 FenixExelent — Panel Pomocy')
         .setDescription('Kompletna lista komend dostępnych na serwerze')
         .addFields(
-          { name: '⚙️ Konfiguracja',   value: '`setup` `security` `servercheck` `dashboard` `stats` `refreshbot` `backup` `appeal`',                                 inline: false },
+          { name: '⚙️ Konfiguracja',   value: '`setup` `security` `servercheck` `dashboard` `stats` `refreshbot` `backup` `appeal` `supportlang`',                                 inline: false },
           { name: '🚫 AntiSpam',        value: '`antispam on` `antispam off` `antispam set` `antispam log`',                                    inline: true  },
           { name: '🚨 AntiRaid',        value: '`antiraid on` `antiraid off` `antiraid set` `antiraid lockdown` `antiraid log`',                inline: true  },
           { name: '🔒 Channel Guard',   value: '`channelguard on` `channelguard off` `channelguard whitelist` `channelguard log`',              inline: true  },
@@ -2057,6 +2048,70 @@ if (commandName === 'help') {
       ],
       ephemeral: true,
     });
+  }
+
+  // ── supportlang ───────────────────────────────────────────────────────
+  if (commandName === 'supportlang') {
+    const sub = interaction.options.getSubcommand();
+
+    if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+      return interaction.reply({ content: '❌ Tylko administrator może konfigurować języki supportu.', ephemeral: true });
+    }
+
+    if (sub === 'setup') {
+      await interaction.deferReply({ ephemeral: true });
+      const result = await setupSupportLanguageSystem(interaction.guild, gc);
+      if (!result.ok) {
+        return interaction.editReply({ embeds: [embed('#ff4757', '❌ Support Language Setup', result.error || 'Nie udało się skonfigurować języków.')] });
+      }
+
+      return interaction.editReply({
+        embeds: [embed(
+          '#2ed573',
+          '✅ Support językowy skonfigurowany',
+          'Utworzono role, kanały i panel wyboru języka. Nowe osoby wybierają język przyciskiem i automatycznie przechodzą weryfikację.',
+          [
+            { name: 'Kanał weryfikacji', value: result.verifyChannel ? `<#${result.verifyChannel.id}>` : 'Brak', inline: true },
+            { name: 'Kategoria', value: result.category ? result.category.name : 'Brak', inline: true },
+            { name: 'Języki', value: getSupportLanguageDefinitions(gc).map(l => `${l.emoji} ${l.label}`).join('\\n'), inline: false },
+          ]
+        )],
+      });
+    }
+
+    if (sub === 'panel') {
+      const cfg = ensureSupportLanguagesConfig(gc);
+      const targetChannel = cfg.verifyChannelId
+        ? await interaction.guild.channels.fetch(cfg.verifyChannelId).catch(() => null)
+        : interaction.channel;
+      if (!targetChannel) return interaction.reply({ content: '❌ Nie znaleziono kanału panelu.', ephemeral: true });
+      await sendSupportLanguagePanel(targetChannel, gc);
+      return interaction.reply({ embeds: [embed('#2ed573', '✅ Panel wysłany', `Panel wyboru języka wysłany na <#${targetChannel.id}>.`)], ephemeral: true });
+    }
+
+    if (sub === 'status') {
+      const cfg = ensureSupportLanguagesConfig(gc);
+      return interaction.reply({
+        embeds: [embed(
+          cfg.enabled ? '#2ed573' : '#ffa502',
+          '🌍 Status support language',
+          cfg.enabled ? 'System wyboru języka jest włączony.' : 'System wyboru języka jest wyłączony.',
+          [
+            { name: 'Support guild', value: getSupportGuildIdFromEnv() || 'Nie ustawiono SUPPORT_GUILD_ID', inline: false },
+            { name: 'Kanał panelu', value: cfg.verifyChannelId ? `<#${cfg.verifyChannelId}>` : 'Brak', inline: true },
+            { name: 'Kanały', value: Object.entries(cfg.channelIds || {}).map(([code, id]) => `${code.toUpperCase()}: <#${id}>`).join('\\n') || 'Brak', inline: false },
+          ]
+        )],
+        ephemeral: true,
+      });
+    }
+
+    if (sub === 'off') {
+      const cfg = ensureSupportLanguagesConfig(gc);
+      cfg.enabled = false;
+      saveConfig();
+      return interaction.reply({ embeds: [embed('#ff4757', '❌ Support language wyłączony', 'Role i kanały nie zostały usunięte, ale przyciski wyboru języka przestaną działać.')], ephemeral: true });
+    }
   }
 
   // ── dashboard ─────────────────────────────────────────────────────────
@@ -3060,32 +3115,47 @@ if (commandName === 'antiraid') {
   if (commandName === 'verification') {
     const sub = interaction.options.getSubcommand();
     if (sub === 'setup') {
-      await interaction.deferReply({ ephemeral: true });
-
       const role = interaction.options.getRole('rola');
-      if (!gc.verification) {
-        gc.verification = { enabled: false, roleId: null, unverifiedRoleId: null, channelId: null };
-      }
-
       gc.verification.roleId = role.id;
 
-      const setup = await ensureVerificationForAntiAlt(interaction.guild, gc);
-      gc.verification.enabled = true;
-      saveConfig();
+      let unverifiedRole = interaction.guild.roles.cache.find(r => r.name === 'Niezweryfikowany');
 
-      return interaction.editReply({
+      if (!unverifiedRole) {
+        unverifiedRole = await interaction.guild.roles.create({
+          name: 'Niezweryfikowany',
+          color: '#747d8c',
+          reason: 'FenixExelent Verification',
+        });
+      }
+
+      gc.verification.unverifiedRoleId = unverifiedRole.id;
+
+      // Ustaw uprawnienia: Niezweryfikowany widzi tylko kanał weryfikacji
+      const verifyChannelId = gc.verification.channelId;
+      for (const [, ch] of interaction.guild.channels.cache) {
+        try {
+          if (verifyChannelId && ch.id === verifyChannelId) {
+            await ch.permissionOverwrites.edit(unverifiedRole, {
+              ViewChannel: true,
+              ReadMessageHistory: true,
+              SendMessages: true,
+            });
+          } else if (ch.type === ChannelType.GuildText || ch.type === ChannelType.GuildVoice || ch.type === ChannelType.GuildCategory) {
+            await ch.permissionOverwrites.edit(unverifiedRole, {
+              ViewChannel: false,
+            });
+          }
+        } catch {}
+      }
+
+      saveConfig();
+      return interaction.reply({
         embeds: [embed(
-          setup.ok ? '#2ed573' : '#ffa502',
-          setup.ok ? '✅ Weryfikacja skonfigurowana' : '⚠️ Weryfikacja częściowo skonfigurowana',
-          setup.ok
-            ? 'System weryfikacji jest gotowy. Nowi użytkownicy mogą dostać rolę Niezweryfikowany, a po kliknięciu panelu dostaną rolę zweryfikowaną.'
-            : 'Nie udało się w pełni utworzyć roli/kanału albo ustawić uprawnień. Sprawdź, czy bot ma Administratora lub Manage Roles + Manage Channels.',
-          [
-            { name: 'Rola po weryfikacji', value: `<@&${role.id}>`, inline: true },
-            { name: 'Rola przed weryfikacją', value: setup.unverifiedRole ? `<@&${setup.unverifiedRole.id}>` : 'Brak', inline: true },
-            { name: 'Kanał weryfikacji', value: setup.verifyChannel ? `<#${setup.verifyChannel.id}>` : 'Brak', inline: true },
-          ]
+          '#2ed573',
+          '✅ Weryfikacja skonfigurowana',
+          `Rola po weryfikacji: <@&${role.id}>\nRola przed weryfikacją: <@&${unverifiedRole.id}>\nNowi użytkownicy dostaną rolę Niezweryfikowany. Po nadaniu roli Member bot ją usunie.`
         )],
+        ephemeral: true
       });
     }
     if (sub === 'on')  { gc.verification.enabled = true;  saveConfig(); return interaction.reply({ embeds: [embed('#2ed573', '✅ Weryfikacja włączona',  'System weryfikacji jest aktywny.')],     ephemeral: true }); }
@@ -3572,6 +3642,11 @@ Important security alerts and warnings will be posted here.`
 //  VERIFICATION PANEL
 // ═══════════════════════════════════════════════════════════════════════════
 async function sendVerifyPanel(channel) {
+  const gc = channel.guild ? getGuildConfig(channel.guild.id) : null;
+  if (channel.guild && isConfiguredSupportGuild(channel.guild) && gc?.supportLanguages?.enabled) {
+    return sendSupportLanguagePanel(channel, gc);
+  }
+
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('verify_btn')
@@ -3583,17 +3658,19 @@ async function sendVerifyPanel(channel) {
     embeds: [new EmbedBuilder()
       .setColor('#ff6b00')
       .setTitle('✅ Weryfikacja / Verification — FenixExelent')
-      .setDescription(
-        '🇵🇱 **Polski**\n' +
-        'Aby uzyskać dostęp do serwera, kliknij przycisk poniżej.\n\n' +
-        '📜 Upewnij się, że przeczytałeś/aś regulamin.\n' +
-        'Klikając przycisk, potwierdzasz akceptację zasad serwera.\n\n' +
-        '━━━━━━━━━━━━━━━━━━━━\n\n' +
-        '🇬🇧 **English**\n' +
-        'To access the server, click the button below.\n\n' +
-        '📜 Make sure you have read the rules.\n' +
-        'By clicking the button, you confirm that you accept the server rules.'
-      )
+      .setDescription(`🇵🇱 **Polski**
+Aby uzyskać dostęp do serwera, kliknij przycisk poniżej.
+
+📜 Upewnij się, że przeczytałeś/aś regulamin.
+Klikając przycisk, potwierdzasz akceptację zasad serwera.
+
+━━━━━━━━━━━━━━━━━━━━
+
+🇬🇧 **English**
+To access the server, click the button below.
+
+📜 Make sure you have read the rules.
+By clicking the button, you confirm that you accept the server rules.`)
       .setFooter({ text: 'FenixExelent 🔥' })
       .setTimestamp()
     ],
@@ -3647,6 +3724,9 @@ client.on('interactionCreate', async (interaction) => {
 
 async function handleButton(interaction, gc) {
 
+  if (interaction.customId.startsWith('supportlang:')) {
+    return handleSupportLanguageButton(interaction, gc);
+  }
 
   if (interaction.customId.startsWith('appeal:')) {
     if (!isStaffMember(interaction.member, gc)) {
@@ -3775,6 +3855,13 @@ async function handleButton(interaction, gc) {
 
 // ── Verification Button ──
 if (interaction.customId === 'verify_btn') {
+  if (isConfiguredSupportGuild(interaction.guild) && gc.supportLanguages?.enabled) {
+    return interaction.reply({
+      content: '🌍 Na support serwerze wybierz język w panelu powyżej. To jednocześnie zweryfikuje konto i odblokuje właściwy kanał.',
+      ephemeral: true,
+    });
+  }
+
   if (!gc.verification.enabled) {
     return interaction.reply({
       content: '❌ Weryfikacja jest aktualnie wyłączona.',
@@ -4129,6 +4216,7 @@ function startDashboard() {
       'emergency',
       'securityIgnore',
       'appeals',
+      'supportLanguages',
     ];
 
     for (const key of allowed) {
