@@ -35,10 +35,16 @@ const app = express();
 
 // ─── SUPPORT AUTO TRANSLATE ────────────────────────────────────────────────
 // Automatyczne tłumaczenie działa tylko na support serwerze.
-// Render ENV:
+// Tryb SMART robi dużo mniej zapytań do API:
+// - wiadomość EN -> tłumaczy tylko na PL
+// - wiadomość PL -> tłumaczy tylko na EN
+// - inny język -> tłumaczy na PL i EN
+// Dzięki temu zwykłe "hello" nie robi 5/15 zapytań.
+// Render ENV polecane:
 // SUPPORT_GUILD_ID=ID_TWOJEGO_SUPPORT_SERWERA
 // AUTO_TRANSLATE_ENABLED=true
-// AUTO_TRANSLATE_LANGS=pl,en,de,fr,es,it,pt,ru,nl,tr,uk,ja,ko,zh,ar
+// AUTO_TRANSLATE_MODE=smart
+// AUTO_TRANSLATE_SMART_TARGETS=pl,en
 // TRANSLATE_API_URL=https://libretranslate.com/translate
 // TRANSLATE_API_KEY=opcjonalny_klucz_api
 const TRANSLATE_LANG_LABELS = {
@@ -59,17 +65,36 @@ const TRANSLATE_LANG_LABELS = {
   ar: '🇸🇦 العربية',
 };
 
+let autoTranslatePausedUntil = 0;
+const autoTranslateCache = new Map();
+
 function getSupportGuildId() {
   return process.env.SUPPORT_GUILD_ID || '1492793536930910310';
 }
 
-function getAutoTranslateTargets() {
-  return String(process.env.AUTO_TRANSLATE_LANGS || process.env.SUPPORT_TRANSLATE_LANGS || 'pl,en,de,fr,es,it,pt,ru,nl,tr,uk,ja,ko,zh,ar')
+function parseLangList(value, fallback) {
+  return String(value || fallback || '')
     .split(',')
     .map(x => x.trim().toLowerCase())
     .filter(Boolean)
-    .filter((value, index, arr) => arr.indexOf(value) === index)
-    .slice(0, Number(process.env.AUTO_TRANSLATE_MAX_TARGETS || 15));
+    .filter((value, index, arr) => arr.indexOf(value) === index);
+}
+
+function getAutoTranslateMode() {
+  return String(process.env.AUTO_TRANSLATE_MODE || 'smart').toLowerCase();
+}
+
+function getAutoTranslateTargets() {
+  const maxTargets = Number(process.env.AUTO_TRANSLATE_MAX_TARGETS || 5);
+  return parseLangList(
+    process.env.AUTO_TRANSLATE_LANGS || process.env.SUPPORT_TRANSLATE_LANGS,
+    'pl,en,de,es,fr'
+  ).slice(0, maxTargets);
+}
+
+function getSmartTranslateTargets() {
+  return parseLangList(process.env.AUTO_TRANSLATE_SMART_TARGETS, 'pl,en')
+    .slice(0, Number(process.env.AUTO_TRANSLATE_MAX_TARGETS || 2));
 }
 
 function isAutoTranslateEnabled() {
@@ -92,24 +117,107 @@ function shouldSkipAutoTranslateContent(content) {
   return false;
 }
 
+function guessSourceLanguage(text) {
+  const value = String(text || '').toLowerCase();
+
+  if (/[ąćęłńóśźż]/i.test(value) || /\b(cześć|czesc|siema|witam|potrzebuję|potrzebuje|pomocy|działa|dziala|dziękuję|dziekuje|proszę|prosze|nie mogę|nie moge)\b/i.test(value)) return 'pl';
+  if (/[äöüß]/i.test(value) || /\b(hallo|hilfe|danke|bitte|nicht|ich|mein|server|problem)\b/i.test(value)) return 'de';
+  if (/[áéíóúñ¿¡]/i.test(value) || /\b(hola|ayuda|gracias|por favor|necesito|problema)\b/i.test(value)) return 'es';
+  if (/[àâçéèêëîïôùûüÿœ]/i.test(value) || /\b(bonjour|merci|aide|problème|probleme|besoin|serveur)\b/i.test(value)) return 'fr';
+  if (/[іїєґ]/i.test(value)) return 'uk';
+  if (/[а-яё]/i.test(value)) return 'ru';
+  if (/[\u3040-\u30ff]/.test(value)) return 'ja';
+  if (/[\uac00-\ud7af]/.test(value)) return 'ko';
+  if (/[\u4e00-\u9fff]/.test(value)) return 'zh';
+  if (/[\u0600-\u06ff]/.test(value)) return 'ar';
+
+  // Krótkie typowo angielskie wiadomości, np. "hello", "help", "thanks".
+  if (/\b(hello|hi|hey|help|thanks|thank you|need|bot|setup|problem|server|discord|please)\b/i.test(value)) return 'en';
+
+  return null;
+}
+
+function resolveAutoTranslateTargets(original, configuredTargets) {
+  const mode = getAutoTranslateMode();
+  const source = guessSourceLanguage(original);
+
+  // Tryb legacy/all: tłumacz na listę z AUTO_TRANSLATE_LANGS, ale pomiń rozpoznany język źródłowy.
+  if (mode === 'all' || mode === 'legacy') {
+    return configuredTargets.filter(lang => lang !== source);
+  }
+
+  // Tryb smart: każda wiadomość jest tłumaczona, ale tylko do najważniejszych języków supportu.
+  const smartTargets = getSmartTranslateTargets();
+  let targets = smartTargets.filter(lang => lang !== source);
+
+  // Jeśli ktoś pisze po angielsku, support PL dostaje tłumaczenie PL.
+  if (source === 'en' && smartTargets.includes('pl')) targets = ['pl'];
+
+  // Jeśli ktoś pisze po polsku, support międzynarodowy dostaje EN.
+  if (source === 'pl' && smartTargets.includes('en')) targets = ['en'];
+
+  // Jeśli język nieznany lub inny, tłumacz tylko na smart targets, np. PL + EN.
+  if (!targets.length && source && smartTargets.some(lang => lang !== source)) {
+    targets = smartTargets.filter(lang => lang !== source);
+  }
+  if (!targets.length && !source) targets = smartTargets;
+
+  return targets.slice(0, Number(process.env.AUTO_TRANSLATE_MAX_TARGETS || 2));
+}
+
+function normalizeTranslateError(err) {
+  const data = err?.response?.data;
+  if (typeof data === 'string') return data;
+  if (data?.error) return String(data.error);
+  return err?.message || String(err);
+}
+
+function isRateLimitTranslateError(err) {
+  const msg = normalizeTranslateError(err).toLowerCase();
+  return msg.includes('too many') || msg.includes('slowdown') || msg.includes('rate limit') || msg.includes('429');
+}
+
 async function translateTextAuto(text, targetLang) {
   const apiUrl = process.env.TRANSLATE_API_URL || process.env.LIBRETRANSLATE_URL || 'https://libretranslate.com/translate';
   const apiKey = process.env.TRANSLATE_API_KEY || process.env.LIBRETRANSLATE_API_KEY || '';
+  const original = String(text || '').trim();
+  const cacheKey = `${targetLang}:${original.toLowerCase()}`;
+
+  if (autoTranslateCache.has(cacheKey)) return autoTranslateCache.get(cacheKey);
+  if (Date.now() < autoTranslatePausedUntil) return '';
 
   const body = {
-    q: text,
+    q: original,
     source: 'auto',
     target: targetLang,
     format: 'text',
   };
   if (apiKey) body.api_key = apiKey;
 
-  const res = await axios.post(apiUrl, body, {
-    timeout: Number(process.env.AUTO_TRANSLATE_TIMEOUT_MS || 12000),
-    headers: { 'Content-Type': 'application/json' },
-  });
+  try {
+    const res = await axios.post(apiUrl, body, {
+      timeout: Number(process.env.AUTO_TRANSLATE_TIMEOUT_MS || 12000),
+      headers: { 'Content-Type': 'application/json' },
+    });
 
-  return String(res.data?.translatedText || res.data?.translation || '').trim();
+    const translated = String(res.data?.translatedText || res.data?.translation || '').trim();
+    if (translated) {
+      autoTranslateCache.set(cacheKey, translated);
+      if (autoTranslateCache.size > 500) {
+        const firstKey = autoTranslateCache.keys().next().value;
+        autoTranslateCache.delete(firstKey);
+      }
+    }
+    return translated;
+  } catch (err) {
+    if (isRateLimitTranslateError(err)) {
+      const pauseMs = Number(process.env.AUTO_TRANSLATE_RATE_LIMIT_PAUSE_MS || 90_000);
+      autoTranslatePausedUntil = Date.now() + pauseMs;
+      console.warn(`AutoTranslate paused for ${Math.round(pauseMs / 1000)}s:`, normalizeTranslateError(err));
+      return '';
+    }
+    throw err;
+  }
 }
 
 async function handleSupportAutoTranslate(message) {
@@ -117,11 +225,12 @@ async function handleSupportAutoTranslate(message) {
   if (!message.guild || message.author.bot) return;
   if (message.guild.id !== getSupportGuildId()) return;
   if (shouldSkipAutoTranslateContent(message.content)) return;
-
-  const targets = getAutoTranslateTargets();
-  if (!targets.length) return;
+  if (Date.now() < autoTranslatePausedUntil) return;
 
   const original = String(message.content || '').trim();
+  const targets = resolveAutoTranslateTargets(original, getAutoTranslateTargets());
+  if (!targets.length) return;
+
   const fields = [];
 
   for (const lang of targets) {
@@ -135,6 +244,10 @@ async function handleSupportAutoTranslate(message) {
         value: translated.slice(0, Number(process.env.AUTO_TRANSLATE_FIELD_MAX_CHARS || 500)),
         inline: false,
       });
+
+      // Publiczne darmowe API nie lubi serii requestów. Mały delay pomaga ograniczyć limity.
+      const delayMs = Number(process.env.AUTO_TRANSLATE_DELAY_MS || 750);
+      if (delayMs > 0) await new Promise(resolve => setTimeout(resolve, delayMs));
     } catch (err) {
       console.warn(`AutoTranslate ${lang} error:`, err.response?.data || err.message);
     }
@@ -142,7 +255,6 @@ async function handleSupportAutoTranslate(message) {
 
   if (!fields.length) return;
 
-  // Discord embed ma limity, więc przy wielu językach dzielimy tłumaczenia na kilka wiadomości.
   const chunkSize = Number(process.env.AUTO_TRANSLATE_FIELDS_PER_EMBED || 5);
   const chunks = [];
   for (let i = 0; i < fields.length; i += chunkSize) chunks.push(fields.slice(i, i + chunkSize));
