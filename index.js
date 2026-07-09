@@ -696,27 +696,8 @@ function buildSupportLanguageRows(gc) {
 }
 
 async function sendSupportLanguagePanel(channel, gc = null) {
-  const guildConfig = gc || getGuildConfig(channel.guild.id);
-  const rows = buildSupportLanguageRows(guildConfig);
-
-  await channel.send({
-    embeds: [new EmbedBuilder()
-      .setColor('#60a5fa')
-      .setTitle('🌍 Wybierz język / Choose your language')
-      .setDescription(`🇵🇱 **Polski**
-Kliknij przycisk z językiem, którego chcesz używać na support serwerze.
-Bot nada Ci odpowiednią rolę, zweryfikuje konto i odblokuje właściwy kanał czatu.
-
-━━━━━━━━━━━━━━━━━━━━
-
-🇬🇧 **English**
-Click the language button you want to use on the support server.
-The bot will give you the correct role, verify your account and unlock the right chat channel.`)
-      .setFooter({ text: 'FenixExelent 🔥 | Support language verification' })
-      .setTimestamp()
-    ],
-    components: rows,
-  });
+  // Zachowujemy stary panel weryfikacji i dokładamy do niego wybór języka.
+  return sendVerifyPanel(channel);
 }
 
 async function setupSupportLanguageSystem(guild, gc) {
@@ -777,7 +758,8 @@ async function setupSupportLanguageSystem(guild, gc) {
       { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
       { id: role.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
     ];
-    if (verifiedRole) permissionOverwrites.push({ id: verifiedRole.id, deny: [PermissionFlagsBits.ViewChannel] });
+    // Nie blokujemy roli Zweryfikowany na kanałach językowych, bo użytkownik po wyborze języka ma jednocześnie rolę Zweryfikowany + rolę języka.
+    // Gdyby rola Zweryfikowany miała deny ViewChannel, Discord zablokowałby dostęp mimo roli językowej.
     if (unverifiedRole) permissionOverwrites.push({ id: unverifiedRole.id, deny: [PermissionFlagsBits.ViewChannel] });
 
     const channel = await getOrCreateTextChannelByName(guild, category, lang.channelName, {
@@ -788,6 +770,21 @@ async function setupSupportLanguageSystem(guild, gc) {
     if (channel) {
       cfg.channelIds[lang.code] = channel.id;
       createdChannels.push(channel);
+
+      await channel.permissionOverwrites.edit(guild.roles.everyone, {
+        ViewChannel: false,
+      }).catch(() => {});
+
+      if (unverifiedRole) {
+        await channel.permissionOverwrites.edit(unverifiedRole, {
+          ViewChannel: false,
+        }).catch(() => {});
+      }
+
+      if (verifiedRole) {
+        await channel.permissionOverwrites.delete(verifiedRole, 'FenixExelent: verified role cannot deny language channel access').catch(() => {});
+      }
+
       await channel.permissionOverwrites.edit(role, {
         ViewChannel: true,
         SendMessages: true,
@@ -3643,16 +3640,30 @@ Important security alerts and warnings will be posted here.`
 // ═══════════════════════════════════════════════════════════════════════════
 async function sendVerifyPanel(channel) {
   const gc = channel.guild ? getGuildConfig(channel.guild.id) : null;
-  if (channel.guild && isConfiguredSupportGuild(channel.guild) && gc?.supportLanguages?.enabled) {
-    return sendSupportLanguagePanel(channel, gc);
-  }
+  const isSupportLanguagePanel = !!(channel.guild && isConfiguredSupportGuild(channel.guild) && gc?.supportLanguages?.enabled);
 
-  const row = new ActionRowBuilder().addComponents(
+  const verifyRow = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('verify_btn')
       .setLabel('✅ Verify / Zweryfikuj się')
       .setStyle(ButtonStyle.Success)
   );
+
+  const components = [verifyRow];
+  let extraDescription = '';
+
+  if (isSupportLanguagePanel) {
+    const languageRows = buildSupportLanguageRows(gc);
+    components.push(...languageRows);
+    extraDescription = `
+
+━━━━━━━━━━━━━━━━━━━━
+
+🌍 **Wybór języka / Language selection**
+Wybierz język poniżej, aby otrzymać odpowiednią rolę i dostęp do właściwego kanału supportu.
+
+Choose your language below to receive the correct role and access to the right support channel.`;
+  }
 
   await channel.send({
     embeds: [new EmbedBuilder()
@@ -3670,11 +3681,11 @@ Klikając przycisk, potwierdzasz akceptację zasad serwera.
 To access the server, click the button below.
 
 📜 Make sure you have read the rules.
-By clicking the button, you confirm that you accept the server rules.`)
+By clicking the button, you confirm that you accept the server rules.${extraDescription}`)
       .setFooter({ text: 'FenixExelent 🔥' })
       .setTimestamp()
     ],
-    components: [row],
+    components,
   });
 }
 
@@ -3857,7 +3868,7 @@ async function handleButton(interaction, gc) {
 if (interaction.customId === 'verify_btn') {
   if (isConfiguredSupportGuild(interaction.guild) && gc.supportLanguages?.enabled) {
     return interaction.reply({
-      content: '🌍 Na support serwerze wybierz język w panelu powyżej. To jednocześnie zweryfikuje konto i odblokuje właściwy kanał.',
+      content: '🌍 Ten panel ma dodatkowy wybór języka. Kliknij przycisk PL / EN / TR / DE / FR pod panelem — wybór języka jednocześnie zweryfikuje konto i odblokuje właściwy kanał supportu.',
       ephemeral: true,
     });
   }
