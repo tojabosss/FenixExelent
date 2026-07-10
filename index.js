@@ -177,6 +177,13 @@ supportLanguages: {
   channelIds: {},
 },
 
+reactionRoles: {
+  enabled: false,
+  channelId: null,
+  messageId: null,
+  roleMap: {},
+},
+
 setup: {
   statsMembersId: null,
   statsBotsId: null,
@@ -194,11 +201,12 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.GuildMessageReactions,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildModeration,
   ],
-  partials: [Partials.Message, Partials.Channel],
+  partials: [Partials.Message, Partials.Channel, Partials.Reaction, Partials.User],
 });
 
 // ─── STATE ─────────────────────────────────────────────────────────────────
@@ -1539,6 +1547,225 @@ async function updateStats(guild) {
 setInterval(() => {
   client.guilds.cache.forEach(g => updateStats(g).catch(() => {}));
 }, 10 * 60 * 1000);
+
+// ─── REACTION ROLES: STEAM + PLATFORMA ───────────────────────────────────
+const REACTION_ROLE_DEFINITIONS = [
+  { emoji: '🖥️', name: 'PC', color: '#5865F2', group: 'Platforma' },
+  { emoji: '🎮', name: 'Steam Deck', color: '#1B2838', group: 'Platforma' },
+
+  { emoji: '💣', name: 'Counter-Strike 2', color: '#F1C40F', group: 'Steam online' },
+  { emoji: '🔮', name: 'Dota 2', color: '#C0392B', group: 'Steam online' },
+  { emoji: '🪂', name: 'PUBG: BATTLEGROUNDS', color: '#E67E22', group: 'Steam online' },
+  { emoji: '🤖', name: 'Apex Legends', color: '#D35400', group: 'Steam online' },
+  { emoji: '🛡️', name: 'Rainbow Six Siege', color: '#3498DB', group: 'Steam online' },
+
+  { emoji: '🛠️', name: 'Rust', color: '#A04000', group: 'Steam survival/co-op' },
+  { emoji: '🦖', name: 'ARK: Survival Ascended', color: '#16A085', group: 'Steam survival/co-op' },
+  { emoji: '🔪', name: 'Dead by Daylight', color: '#7F8C8D', group: 'Steam survival/co-op' },
+  { emoji: '👾', name: 'Helldivers 2', color: '#F4D03F', group: 'Steam survival/co-op' },
+  { emoji: '🌀', name: 'Warframe', color: '#5DADE2', group: 'Steam survival/co-op' },
+
+  { emoji: '🚗', name: 'Grand Theft Auto V', color: '#2ECC71', group: 'Steam RPG/sim' },
+  { emoji: '🌃', name: 'Cyberpunk 2077', color: '#F1C40F', group: 'Steam RPG/sim' },
+  { emoji: '🐉', name: "Baldur's Gate 3", color: '#8E6E53', group: 'Steam RPG/sim' },
+  { emoji: '🚚', name: 'Euro Truck Simulator 2', color: '#2980B9', group: 'Steam RPG/sim' },
+  { emoji: '🌾', name: 'Stardew Valley', color: '#58D68D', group: 'Steam RPG/sim' },
+  { emoji: '⛏️', name: 'Terraria', color: '#6AA84F', group: 'Steam RPG/sim' },
+];
+
+function ensureReactionRolesConfig(gc) {
+  if (!gc.reactionRoles) {
+    gc.reactionRoles = {
+      enabled: false,
+      channelId: null,
+      messageId: null,
+      roleMap: {},
+    };
+  }
+  if (!gc.reactionRoles.roleMap || typeof gc.reactionRoles.roleMap !== 'object') {
+    gc.reactionRoles.roleMap = {};
+  }
+  return gc.reactionRoles;
+}
+
+function normalizeReactionEmoji(value) {
+  return String(value || '').replace(/\uFE0F/g, '');
+}
+
+function canManageReactionRoles(message) {
+  if (!message.guild || !message.member) return false;
+  return (
+    message.guild.ownerId === message.author.id ||
+    message.member.permissions.has(PermissionFlagsBits.Administrator) ||
+    message.member.permissions.has(PermissionFlagsBits.ManageGuild)
+  );
+}
+
+async function createReactionRolesPanel(message) {
+  const guild = message.guild;
+  const gc = getGuildConfig(guild.id);
+  const cfg = ensureReactionRolesConfig(gc);
+
+  await guild.roles.fetch().catch(() => {});
+
+  const botMember = guild.members.me || await guild.members.fetchMe().catch(() => null);
+  if (!botMember?.permissions.has(PermissionFlagsBits.ManageRoles)) {
+    return message.reply('❌ Bot potrzebuje uprawnienia **Zarządzanie rolami**. Najprościej nadaj mu Administratora na czas konfiguracji.');
+  }
+
+  const roleMap = {};
+  const created = [];
+  const reused = [];
+
+  for (const def of REACTION_ROLE_DEFINITIONS) {
+    let role = guild.roles.cache.find(r => r.name.toLowerCase() === def.name.toLowerCase());
+    if (!role) {
+      role = await guild.roles.create({
+        name: def.name,
+        color: def.color,
+        mentionable: false,
+        reason: `FenixExelent reaction roles: ${def.name}`,
+      }).catch(() => null);
+      if (role) created.push(role.name);
+    } else {
+      reused.push(role.name);
+    }
+
+    if (role) roleMap[normalizeReactionEmoji(def.emoji)] = role.id;
+  }
+
+  const platformLines = REACTION_ROLE_DEFINITIONS
+    .filter(d => d.group === 'Platforma')
+    .map(d => `${d.emoji} — **${d.name}**`)
+    .join('\n');
+  const onlineLines = REACTION_ROLE_DEFINITIONS
+    .filter(d => d.group === 'Steam online')
+    .map(d => `${d.emoji} — **${d.name}**`)
+    .join('\n');
+  const survivalLines = REACTION_ROLE_DEFINITIONS
+    .filter(d => d.group === 'Steam survival/co-op')
+    .map(d => `${d.emoji} — **${d.name}**`)
+    .join('\n');
+  const rpgSimLines = REACTION_ROLE_DEFINITIONS
+    .filter(d => d.group === 'Steam RPG/sim')
+    .map(d => `${d.emoji} — **${d.name}**`)
+    .join('\n');
+
+  const panel = await message.channel.send({
+    embeds: [embed(
+      '#5865F2',
+      '🎮 Wybierz swoje role Steam',
+      'Kliknij reakcję pod wiadomością, aby dostać rolę. Usuń swoją reakcję, aby rola została zabrana.',
+      [
+        { name: '🕹️ Platforma', value: platformLines, inline: false },
+        { name: '🔥 Steam — gry online', value: onlineLines, inline: false },
+        { name: '🧟 Steam — survival i co-op', value: survivalLines, inline: false },
+        { name: '🧙 Steam — RPG i symulatory', value: rpgSimLines, inline: false },
+      ]
+    )],
+  }).catch(() => null);
+
+  if (!panel) {
+    return message.reply('❌ Nie udało się wysłać panelu. Sprawdź uprawnienia: Wyświetlanie kanału, Wysyłanie wiadomości i Osadzanie linków.');
+  }
+
+  for (const def of REACTION_ROLE_DEFINITIONS) {
+    if (!roleMap[normalizeReactionEmoji(def.emoji)]) continue;
+    await panel.react(def.emoji).catch(() => {});
+  }
+
+  cfg.enabled = true;
+  cfg.channelId = message.channel.id;
+  cfg.messageId = panel.id;
+  cfg.roleMap = roleMap;
+  cfg.updatedAt = new Date().toISOString();
+  saveConfig();
+
+  await message.reply(
+    `✅ Panel ról został utworzony. Utworzono: **${created.length}**, użyto istniejących: **${reused.length}**.\n` +
+    'Użytkownicy mogą wybrać kilka gier oraz platformę PC lub Steam Deck.'
+  ).catch(() => {});
+}
+
+// Komenda tekstowa — bez deploy-commands.js.
+client.on('messageCreate', async (message) => {
+  if (!message.guild || message.author.bot) return;
+
+  const command = String(message.content || '').trim().toLowerCase();
+  const aliases = {
+    '!role setup': '!rolepanel setup',
+    '!role status': '!rolepanel status',
+    '!role off': '!rolepanel off',
+  };
+  const resolvedCommand = aliases[command] || command;
+  if (!['!rolepanel setup', '!rolepanel status', '!rolepanel off'].includes(resolvedCommand)) return;
+
+  if (!canManageReactionRoles(message)) {
+    return message.reply('❌ Tej komendy może użyć tylko właściciel serwera lub administrator.').catch(() => {});
+  }
+
+  const gc = getGuildConfig(message.guild.id);
+  const cfg = ensureReactionRolesConfig(gc);
+
+  if (resolvedCommand === '!rolepanel setup') {
+    return createReactionRolesPanel(message);
+  }
+
+  if (resolvedCommand === '!rolepanel status') {
+    const status = cfg.enabled ? '✅ Włączony' : '❌ Wyłączony';
+    const panel = cfg.messageId && cfg.channelId
+      ? `https://discord.com/channels/${message.guild.id}/${cfg.channelId}/${cfg.messageId}`
+      : 'Brak panelu';
+    return message.reply(`**Reaction Roles:** ${status}\n**Panel:** ${panel}`).catch(() => {});
+  }
+
+  cfg.enabled = false;
+  saveConfig();
+  return message.reply('✅ Automatyczne role przez reakcje zostały wyłączone. Role i panel nie zostały usunięte.').catch(() => {});
+});
+
+async function resolveReactionData(reaction, user) {
+  try {
+    if (reaction.partial) await reaction.fetch();
+    if (reaction.message?.partial) await reaction.message.fetch();
+    if (user?.partial) await user.fetch();
+  } catch {
+    return null;
+  }
+
+  const guild = reaction.message?.guild;
+  if (!guild || !user || user.bot) return null;
+
+  const gc = getGuildConfig(guild.id);
+  const cfg = ensureReactionRolesConfig(gc);
+  if (!cfg.enabled || reaction.message.id !== cfg.messageId) return null;
+
+  const emojiKey = normalizeReactionEmoji(reaction.emoji?.name);
+  const roleId = cfg.roleMap?.[emojiKey];
+  if (!roleId) return null;
+
+  const role = guild.roles.cache.get(roleId) || await guild.roles.fetch(roleId).catch(() => null);
+  const member = await guild.members.fetch(user.id).catch(() => null);
+  if (!role || !member) return null;
+
+  return { guild, role, member };
+}
+
+client.on('messageReactionAdd', async (reaction, user) => {
+  const data = await resolveReactionData(reaction, user);
+  if (!data) return;
+  await data.member.roles.add(data.role, 'FenixExelent: rola wybrana reakcją').catch(err => {
+    console.warn(`ReactionRoles add error: ${err.message || err}`);
+  });
+});
+
+client.on('messageReactionRemove', async (reaction, user) => {
+  const data = await resolveReactionData(reaction, user);
+  if (!data) return;
+  await data.member.roles.remove(data.role, 'FenixExelent: usunięto reakcję').catch(err => {
+    console.warn(`ReactionRoles remove error: ${err.message || err}`);
+  });
+});
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  BOT EVENTS
