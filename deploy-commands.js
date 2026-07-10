@@ -24,6 +24,24 @@ const commands = [
     .addSubcommand(s => s.setName('status').setDescription('Pokaż status języków supportu'))
     .addSubcommand(s => s.setName('off').setDescription('Wyłącz przyciski wyboru języka')),
 
+
+  new SlashCommandBuilder()
+    .setName('gamingserver')
+    .setDescription('🎮 Prywatny setup serwera gaming/streaming')
+    .addSubcommand(s => s
+      .setName('preview')
+      .setDescription('Pokaż, co bot utworzy bez usuwania kanałów'))
+    .addSubcommand(s => s
+      .setName('security')
+      .setDescription('Włącz wszystkie zabezpieczenia bota bez usuwania kanałów'))
+    .addSubcommand(s => s
+      .setName('reset')
+      .setDescription('USUWA wszystkie kanały i tworzy nowy serwer gaming/streaming')
+      .addStringOption(o => o
+        .setName('potwierdz')
+        .setDescription('Wpisz dokładnie: USUN WSZYSTKO')
+        .setRequired(true))),
+
   new SlashCommandBuilder()
     .setName('securityignore')
     .setDescription('🧾 Ignorowane kanały/role dla automatycznych zabezpieczeń')

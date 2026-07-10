@@ -627,7 +627,12 @@ function getSupportGuildIdFromEnv() {
 
 function isConfiguredSupportGuild(guild) {
   const supportGuildId = getSupportGuildIdFromEnv();
-  return !!supportGuildId && guild?.id === supportGuildId;
+  if (supportGuildId) return guild?.id === supportGuildId;
+
+  // Fallback: jeśli SUPPORT_GUILD_ID nie jest ustawione, panel języka działa na serwerze,
+  // na którym /supportlang setup albo /gamingserver reset zapisał konfigurację.
+  const gc = guild?.id ? getGuildConfig(guild.id) : null;
+  return !!(gc?.supportLanguages?.enabled && gc.supportLanguages.guildId === guild.id);
 }
 
 function ensureSupportLanguagesConfig(gc) {
@@ -1106,6 +1111,402 @@ async function getOrCreateText(guild, category, name, permissionOverwrites) {
   return guild.channels.cache.find(c =>
     c.type === ChannelType.GuildText && c.name === name && c.parentId === category.id
   ) || await guild.channels.create({ name, type: ChannelType.GuildText, parent: category, permissionOverwrites });
+}
+
+
+// ─── PRIVATE GAMING / STREAMING SERVER TEMPLATE ─────────────────────────────
+const PRIVATE_GAMING_SETUP_GUILD_ID = process.env.GAMING_SETUP_GUILD_ID || '1462330169669980244';
+
+function getPrivateGamingSetupOwnerIds(guild) {
+  const raw = process.env.GAMING_SETUP_OWNER_ID || process.env.OWNER_ID || guild?.ownerId || '';
+  return String(raw)
+    .split(/[\s,;]+/)
+    .map(x => x.trim())
+    .filter(Boolean);
+}
+
+function canUsePrivateGamingSetup(interaction) {
+  if (!interaction.guild) return { ok: false, error: 'Tej komendy można używać tylko na serwerze.' };
+  if (interaction.guild.id !== PRIVATE_GAMING_SETUP_GUILD_ID) {
+    return { ok: false, error: `Ta komenda jest prywatna i działa tylko na serwerze ID ${PRIVATE_GAMING_SETUP_GUILD_ID}.` };
+  }
+
+  const ownerIds = getPrivateGamingSetupOwnerIds(interaction.guild);
+  if (!ownerIds.includes(interaction.user.id) && interaction.user.id !== interaction.guild.ownerId) {
+    return { ok: false, error: 'Ta komenda jest prywatna — może jej używać tylko właściciel ustawiony w GAMING_SETUP_OWNER_ID / OWNER_ID albo właściciel serwera.' };
+  }
+
+  if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+    return { ok: false, error: 'Potrzebujesz uprawnienia Administrator, żeby wykonać pełny reset serwera.' };
+  }
+
+  return { ok: true };
+}
+
+async function createPrivateRole(guild, name, color, options = {}) {
+  await guild.roles.fetch().catch(() => {});
+  let role = guild.roles.cache.find(r => r.name.toLowerCase() === String(name).toLowerCase());
+  if (!role) {
+    role = await guild.roles.create({
+      name,
+      color: color || undefined,
+      hoist: !!options.hoist,
+      mentionable: !!options.mentionable,
+      permissions: options.permissions || undefined,
+      reason: 'FenixExelent private gaming/streaming setup',
+    }).catch(() => null);
+  }
+  return role;
+}
+
+async function createPrivateCategory(guild, name, permissionOverwrites = []) {
+  return guild.channels.create({
+    name,
+    type: ChannelType.GuildCategory,
+    permissionOverwrites,
+    reason: 'FenixExelent private gaming/streaming setup',
+  });
+}
+
+async function createPrivateText(guild, parent, name, topic = '', permissionOverwrites = []) {
+  return guild.channels.create({
+    name,
+    type: ChannelType.GuildText,
+    parent: parent?.id || null,
+    topic: topic || undefined,
+    permissionOverwrites,
+    reason: 'FenixExelent private gaming/streaming setup',
+  });
+}
+
+async function createPrivateVoice(guild, parent, name, userLimit = 0, permissionOverwrites = []) {
+  return guild.channels.create({
+    name,
+    type: ChannelType.GuildVoice,
+    parent: parent?.id || null,
+    userLimit,
+    permissionOverwrites,
+    reason: 'FenixExelent private gaming/streaming setup',
+  });
+}
+
+async function deleteAllGuildChannelsForTemplate(guild) {
+  await guild.channels.fetch().catch(() => {});
+  const channels = [...guild.channels.cache.values()]
+    .sort((a, b) => {
+      if (a.type === ChannelType.GuildCategory && b.type !== ChannelType.GuildCategory) return 1;
+      if (a.type !== ChannelType.GuildCategory && b.type === ChannelType.GuildCategory) return -1;
+      return (b.position || 0) - (a.position || 0);
+    });
+
+  let deleted = 0;
+  let failed = 0;
+  for (const ch of channels) {
+    await ch.delete('FenixExelent private gaming/streaming reset').then(() => deleted++).catch(() => failed++);
+  }
+  return { deleted, failed };
+}
+
+function privateDenyEveryone(guild) {
+  return [{ id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] }];
+}
+
+function privateAllowRole(role, extra = []) {
+  return { id: role.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory, ...extra] };
+}
+
+async function applyFullSecurityDefaultsAfterTemplate(guild, gc, refs) {
+  ensureSecurityStats(gc);
+  ensureSecurityIgnore(gc);
+
+  const verifiedRole = refs.verifiedRole;
+  const unverifiedRole = refs.unverifiedRole;
+  const mutedRole = refs.mutedRole;
+  const modRole = refs.modRole;
+  const adminRole = refs.adminRole;
+  const modLog = refs.modLogChannel;
+  const securityLog = refs.securityLogChannel;
+  const ticketLog = refs.ticketLogChannel;
+  const scamReport = refs.scamReportChannel;
+  const appealChannel = refs.appealChannel;
+  const verifyChannel = refs.verifyChannel;
+  const ticketChannel = refs.ticketChannel;
+
+  gc.modRole = modRole?.id || gc.modRole || null;
+  gc.adminRole = adminRole?.id || gc.adminRole || null;
+
+  if (!gc.modLog) gc.modLog = { channelId: null };
+  gc.modLog.channelId = modLog?.id || securityLog?.id || gc.modLog.channelId || null;
+
+  gc.antispam = Object.assign({}, gc.antispam || {}, {
+    enabled: true,
+    maxMessages: 5,
+    interval: 3000,
+    muteMinutes: 10,
+    logChannel: securityLog?.id || modLog?.id || null,
+  });
+
+  gc.antiraid = Object.assign({}, gc.antiraid || {}, {
+    enabled: true,
+    joinThreshold: 5,
+    joinInterval: 10000,
+    action: 'kick',
+    logChannel: securityLog?.id || modLog?.id || null,
+    lockdownActive: false,
+  });
+
+  gc.antiscam = Object.assign({}, gc.antiscam || {}, {
+    enabled: true,
+    muteMinutes: 60,
+    deleteMessage: true,
+    logChannel: securityLog?.id || modLog?.id || null,
+    blockScamImages: true,
+    ocrScamImages: true,
+    ocrMinScamScore: 3,
+    ocrMaxImages: 2,
+    ocrTimeoutMs: 25000,
+    ocrMaxImageBytes: 8 * 1024 * 1024,
+    allowScamReportsInReportChannels: true,
+    blockImageOnlyScamScreenshots: false,
+    whitelistedDomains: gc.antiscam?.whitelistedDomains || ['discord.com', 'discord.gg', 'youtube.com', 'youtu.be', 'twitch.tv', 'kick.com', 'tiktok.com'],
+    blockedDomains: normalizeBlockedDomains([...(gc.antiscam?.blockedDomains || []), ...DEFAULT_BLOCKED_DOMAINS]),
+    stats: gc.antiscam?.stats || { detected: 0, deleted: 0, muted: 0 },
+    riskScores: gc.antiscam?.riskScores || {},
+  });
+
+  gc.antialt = Object.assign({}, gc.antialt || {}, {
+    enabled: true,
+    minAccountAgeDays: 7,
+    action: 'verify',
+    logChannel: securityLog?.id || modLog?.id || null,
+    riskPoints: 20,
+  });
+
+  gc.verification = Object.assign({}, gc.verification || {}, {
+    enabled: true,
+    roleId: verifiedRole?.id || null,
+    unverifiedRoleId: unverifiedRole?.id || null,
+    channelId: verifyChannel?.id || null,
+  });
+
+  gc.tickets = Object.assign({}, gc.tickets || {}, {
+    enabled: true,
+    categoryId: refs.supportCategory?.id || null,
+    supportRoleId: modRole?.id || adminRole?.id || null,
+    logChannelId: ticketLog?.id || modLog?.id || null,
+    openTickets: gc.tickets?.openTickets || {},
+  });
+
+  gc.appeals = Object.assign({}, gc.appeals || {}, {
+    enabled: true,
+    channelId: appealChannel?.id || null,
+    cases: gc.appeals?.cases || {},
+  });
+
+  gc.channelGuard = Object.assign({}, gc.channelGuard || {}, {
+    enabled: true,
+    blockNewChannels: false,
+    whitelistedRoles: [adminRole?.id, modRole?.id].filter(Boolean),
+    logChannel: securityLog?.id || modLog?.id || null,
+  });
+
+  // Support language verification bez zewnętrznego API tłumaczeń.
+  const cfg = ensureSupportLanguagesConfig(gc);
+  cfg.enabled = true;
+  cfg.guildId = guild.id;
+  cfg.verifyChannelId = verifyChannel?.id || null;
+  cfg.categoryId = refs.chatCategory?.id || null;
+  cfg.supported = ['pl', 'en', 'tr', 'de', 'fr'];
+  cfg.roleIds = refs.languageRoleIds || {};
+  cfg.channelIds = refs.languageChannelIds || {};
+
+  // Kanały, na których automatyczna ochrona nie powinna przeszkadzać w obsłudze zgłoszeń.
+  gc.securityIgnore.channels = [...new Set([
+    ...(gc.securityIgnore.channels || []),
+    ticketChannel?.id,
+    ticketLog?.id,
+    modLog?.id,
+    securityLog?.id,
+    appealChannel?.id,
+    scamReport?.id,
+  ].filter(Boolean))];
+
+  if (mutedRole) {
+    await guild.channels.fetch().catch(() => {});
+    for (const [, ch] of guild.channels.cache) {
+      if (ch.type === ChannelType.GuildText || ch.type === ChannelType.GuildVoice || ch.type === ChannelType.GuildCategory) {
+        await ch.permissionOverwrites.edit(mutedRole, {
+          SendMessages: false,
+          AddReactions: false,
+          Speak: false,
+        }).catch(() => {});
+      }
+    }
+  }
+
+  saveConfig();
+}
+
+async function setupPrivateGamingStreamingServer(guild, gc, options = {}) {
+  const result = {
+    backupId: null,
+    deleted: 0,
+    failedDelete: 0,
+    roles: 0,
+    channels: 0,
+    failed: 0,
+  };
+
+  await guild.roles.fetch().catch(() => {});
+  await guild.channels.fetch().catch(() => {});
+
+  if (options.createBackup !== false) {
+    const backup = createServerBackup(guild, gc);
+    result.backupId = backup?.id || null;
+  }
+
+  if (options.deleteExisting) {
+    const del = await deleteAllGuildChannelsForTemplate(guild);
+    result.deleted = del.deleted;
+    result.failedDelete = del.failed;
+    await guild.channels.fetch().catch(() => {});
+  }
+
+  const adminRole = await createPrivateRole(guild, '🛡️ Admin', '#ef4444', { hoist: true, permissions: [PermissionFlagsBits.Administrator] });
+  const modRole = await createPrivateRole(guild, '🔨 Moderator', '#f97316', { hoist: true });
+  const streamerRole = await createPrivateRole(guild, '🎥 Streamer', '#a855f7', { hoist: true, mentionable: true });
+  const kickRole = await createPrivateRole(guild, '🟢 Kick', '#22c55e', { mentionable: true });
+  const tiktokRole = await createPrivateRole(guild, '🎵 TikTok', '#ec4899', { mentionable: true });
+  const vipRole = await createPrivateRole(guild, '⭐ VIP', '#facc15', { hoist: true });
+  const verifiedRole = await createPrivateRole(guild, 'Zweryfikowany', '#22c55e');
+  const unverifiedRole = await createPrivateRole(guild, 'Niezweryfikowany', '#64748b');
+  const mutedRole = await createPrivateRole(guild, '🔇 Muted', '#6b7280');
+  const langRoles = {};
+  for (const lang of SUPPORT_LANGUAGE_DEFINITIONS.filter(l => ['pl', 'en', 'tr', 'de', 'fr'].includes(l.code))) {
+    langRoles[lang.code] = await createPrivateRole(guild, lang.roleName, '#3b82f6');
+  }
+  result.roles = [adminRole, modRole, streamerRole, kickRole, tiktokRole, vipRole, verifiedRole, unverifiedRole, mutedRole, ...Object.values(langRoles)].filter(Boolean).length;
+
+  const staffPerms = [
+    { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
+    ...(adminRole ? [privateAllowRole(adminRole, [PermissionFlagsBits.SendMessages])] : []),
+    ...(modRole ? [privateAllowRole(modRole, [PermissionFlagsBits.SendMessages])] : []),
+  ];
+
+  const verifyPerms = [
+    { id: guild.roles.everyone.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory], deny: [PermissionFlagsBits.SendMessages] },
+    ...(unverifiedRole ? [{ id: unverifiedRole.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory], deny: [PermissionFlagsBits.SendMessages] }] : []),
+    ...(verifiedRole ? [{ id: verifiedRole.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory], deny: [PermissionFlagsBits.SendMessages] }] : []),
+  ];
+
+  const publicReadOnly = [
+    { id: guild.roles.everyone.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory], deny: [PermissionFlagsBits.SendMessages] },
+    ...(verifiedRole ? [{ id: verifiedRole.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory], deny: [PermissionFlagsBits.SendMessages] }] : []),
+  ];
+
+  const verifiedChat = [
+    { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
+    ...(verifiedRole ? [privateAllowRole(verifiedRole, [PermissionFlagsBits.SendMessages, PermissionFlagsBits.AddReactions])] : []),
+    ...(unverifiedRole ? [{ id: unverifiedRole.id, deny: [PermissionFlagsBits.ViewChannel] }] : []),
+  ];
+
+  const refs = { adminRole, modRole, verifiedRole, unverifiedRole, mutedRole, languageRoleIds: {}, languageChannelIds: {} };
+
+  const startCat = await createPrivateCategory(guild, '🚀 START');
+  const infoCat = await createPrivateCategory(guild, '📢 INFORMACJE');
+  const verifyCat = await createPrivateCategory(guild, '✅ WERYFIKACJA');
+  const chatCat = await createPrivateCategory(guild, '💬 CHAT');
+  const streamCat = await createPrivateCategory(guild, '🎥 STREAMING');
+  const gamingCat = await createPrivateCategory(guild, '🎮 GAMING');
+  const supportCat = await createPrivateCategory(guild, '🎫 SUPPORT');
+  const voiceCat = await createPrivateCategory(guild, '🔊 VOICE');
+  const staffCat = await createPrivateCategory(guild, '🔒 STAFF', staffPerms);
+  refs.chatCategory = chatCat;
+  refs.supportCategory = supportCat;
+
+  const created = [];
+  created.push(await createPrivateText(guild, startCat, '👋│witajka', 'Witamy na serwerze gaming/streaming.', publicReadOnly));
+  created.push(await createPrivateText(guild, startCat, '📜│regulamin', 'Regulamin serwera.', publicReadOnly));
+  created.push(await createPrivateText(guild, startCat, '📌│role', 'Role społeczności i powiadomień.', verifiedChat));
+
+  created.push(await createPrivateText(guild, infoCat, '📣│ogloszenia', 'Ogłoszenia serwera.', publicReadOnly));
+  created.push(await createPrivateText(guild, infoCat, '📰│info', 'Informacje o serwerze.', publicReadOnly));
+  created.push(await createPrivateText(guild, infoCat, '🤖│komendy-bota', 'Komendy FenixExelentSecurity.', verifiedChat));
+  created.push(await createPrivateText(guild, infoCat, '📊│status', 'Status bota i serwera.', publicReadOnly));
+
+  refs.verifyChannel = await createPrivateText(guild, verifyCat, '✅│weryfikacja', 'Kliknij Verify i wybierz język, aby uzyskać dostęp do serwera.', verifyPerms);
+  created.push(refs.verifyChannel);
+
+  for (const lang of SUPPORT_LANGUAGE_DEFINITIONS.filter(l => ['pl', 'en', 'tr', 'de', 'fr'].includes(l.code))) {
+    const role = langRoles[lang.code];
+    if (!role) continue;
+    refs.languageRoleIds[lang.code] = role.id;
+    const perms = [
+      { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
+      { id: role.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AddReactions] },
+      ...(unverifiedRole ? [{ id: unverifiedRole.id, deny: [PermissionFlagsBits.ViewChannel] }] : []),
+    ];
+    const ch = await createPrivateText(guild, chatCat, lang.channelName, lang.topic, perms);
+    refs.languageChannelIds[lang.code] = ch.id;
+    created.push(ch);
+  }
+  created.push(await createPrivateText(guild, chatCat, '💬│chat-ogolny', 'Ogólny chat dla zweryfikowanych użytkowników.', verifiedChat));
+  created.push(await createPrivateText(guild, chatCat, '📸│media', 'Screeny, klipy i zdjęcia.', verifiedChat));
+  created.push(await createPrivateText(guild, chatCat, '😂│memy', 'Memy i luźne rozmowy.', verifiedChat));
+
+  created.push(await createPrivateText(guild, streamCat, '🟢│kick-live', 'Powiadomienia i rozmowy o streamach na Kick.', verifiedChat));
+  created.push(await createPrivateText(guild, streamCat, '🎵│tiktok-live', 'Powiadomienia i rozmowy o TikToku.', verifiedChat));
+  created.push(await createPrivateText(guild, streamCat, '▶️│youtube', 'YouTube, klipy i materiały.', verifiedChat));
+  created.push(await createPrivateText(guild, streamCat, '📅│harmonogram', 'Plan streamów i eventów.', publicReadOnly));
+  created.push(await createPrivateText(guild, streamCat, '💡│pomysly-na-stream', 'Pomysły na streamy i odcinki.', verifiedChat));
+
+  created.push(await createPrivateText(guild, gamingCat, '🎮│gaming-chat', 'Rozmowy gamingowe.', verifiedChat));
+  created.push(await createPrivateText(guild, gamingCat, '🔫│cs2', 'CS2 / Counter-Strike.', verifiedChat));
+  created.push(await createPrivateText(guild, gamingCat, '🕹️│szukam-ekipy', 'Szukaj osób do gry.', verifiedChat));
+  created.push(await createPrivateText(guild, gamingCat, '🏆│rankingi', 'Rankingi, wyniki i osiągnięcia.', verifiedChat));
+
+  refs.ticketChannel = await createPrivateText(guild, supportCat, '🎫│ticket', 'Otwórz ticket do administracji.', verifiedChat);
+  refs.scamReportChannel = await createPrivateText(guild, supportCat, '🚨│zglos-scam', 'Zgłaszanie scam linków i podejrzanych użytkowników.', verifiedChat);
+  refs.appealChannel = await createPrivateText(guild, supportCat, '📝│appeal', 'Odwołania od kar.', verifiedChat);
+  created.push(refs.ticketChannel, refs.scamReportChannel, refs.appealChannel);
+
+  refs.modLogChannel = await createPrivateText(guild, staffCat, '🔧│mod-log', 'Logi moderacji.', staffPerms);
+  refs.securityLogChannel = await createPrivateText(guild, staffCat, '🛡️│security-log', 'Logi AntiScam, AntiRaid, AntiSpam i AntiAlt.', staffPerms);
+  refs.ticketLogChannel = await createPrivateText(guild, staffCat, '📨│ticket-log', 'Logi ticketów.', staffPerms);
+  created.push(refs.modLogChannel, refs.securityLogChannel, refs.ticketLogChannel);
+  created.push(await createPrivateText(guild, staffCat, '🕵️│staff-chat', 'Kanał administracji.', staffPerms));
+
+  created.push(await createPrivateVoice(guild, voiceCat, '🎙️│Lobby', 0, verifiedChat));
+  created.push(await createPrivateVoice(guild, voiceCat, '🎮│Gaming 1', 10, verifiedChat));
+  created.push(await createPrivateVoice(guild, voiceCat, '🎮│Gaming 2', 10, verifiedChat));
+  created.push(await createPrivateVoice(guild, voiceCat, '🔴│Stream Room', 5, verifiedChat));
+  created.push(await createPrivateVoice(guild, voiceCat, '🎧│Support Voice', 5, verifiedChat));
+
+  result.channels = created.filter(Boolean).length + [startCat, infoCat, verifyCat, chatCat, streamCat, gamingCat, supportCat, voiceCat, staffCat].filter(Boolean).length;
+
+  await applyFullSecurityDefaultsAfterTemplate(guild, gc, refs);
+
+  if (refs.verifyChannel) {
+    await sendVerifyPanel(refs.verifyChannel).catch(() => {});
+  }
+  if (refs.ticketChannel) {
+    await sendTicketPanel(refs.ticketChannel).catch(() => {});
+  }
+  if (refs.modLogChannel) {
+    await refs.modLogChannel.send({ embeds: [embed(
+      '#2ed573',
+      '✅ Gaming/Streaming template utworzony',
+      'Serwer został zresetowany i skonfigurowany pod gaming, streaming Kick/TikTok oraz zabezpieczenia FenixExelentSecurity.',
+      [
+        { name: 'Backup przed resetem', value: result.backupId || 'Brak', inline: true },
+        { name: 'Usunięte kanały', value: `${result.deleted}`, inline: true },
+        { name: 'Nowe kanały/kategorie', value: `${result.channels}`, inline: true },
+        { name: 'Zabezpieczenia', value: 'AntiSpam, AntiRaid, AntiScam + OCR, AntiAlt, Verification, Tickets, Appeals, Security Logs', inline: false },
+      ]
+    )] }).catch(() => {});
+  }
+
+  return result;
 }
 
 // ─── STATS UPDATE ──────────────────────────────────────────────────────────
@@ -2031,7 +2432,7 @@ if (commandName === 'help') {
         .setTitle('🔥 FenixExelent — Panel Pomocy')
         .setDescription('Kompletna lista komend dostępnych na serwerze')
         .addFields(
-          { name: '⚙️ Konfiguracja',   value: '`setup` `security` `servercheck` `dashboard` `stats` `refreshbot` `backup` `appeal` `supportlang`',                                 inline: false },
+          { name: '⚙️ Konfiguracja',   value: '`setup` `gamingserver` `security` `servercheck` `dashboard` `stats` `refreshbot` `backup` `appeal` `supportlang`',                                 inline: false },
           { name: '🚫 AntiSpam',        value: '`antispam on` `antispam off` `antispam set` `antispam log`',                                    inline: true  },
           { name: '🚨 AntiRaid',        value: '`antiraid on` `antiraid off` `antiraid set` `antiraid lockdown` `antiraid log`',                inline: true  },
           { name: '🔒 Channel Guard',   value: '`channelguard on` `channelguard off` `channelguard whitelist` `channelguard log`',              inline: true  },
@@ -2112,6 +2513,89 @@ if (commandName === 'help') {
   }
 
   // ── dashboard ─────────────────────────────────────────────────────────
+
+  // ── gamingserver: prywatny reset/setup serwera gaming + streaming ─────────
+  if (commandName === 'gamingserver') {
+    const access = canUsePrivateGamingSetup(interaction);
+    if (!access.ok) {
+      return interaction.reply({ content: `❌ ${access.error}`, ephemeral: true });
+    }
+
+    const sub = interaction.options.getSubcommand();
+
+    if (sub === 'preview') {
+      return interaction.reply({
+        embeds: [embed(
+          '#3b82f6',
+          '🎮 Gaming/Streaming Template — preview',
+          'Prywatny setup dla Twojego serwera. Komenda działa tylko na wskazanym serwerze i tylko dla właściciela.',
+          [
+            { name: 'Serwer', value: `${interaction.guild.name}\nID: ${interaction.guild.id}`, inline: false },
+            { name: 'Tworzy kanały', value: 'Start, Informacje, Weryfikacja, Chat PL/EN/TR/DE/FR, Streaming Kick/TikTok/YouTube, Gaming, Support, Voice, Staff.', inline: false },
+            { name: 'Tworzy role', value: 'Admin, Moderator, Streamer, Kick, TikTok, VIP, Zweryfikowany, Niezweryfikowany, Muted oraz role językowe.', inline: false },
+            { name: 'Zabezpieczenia', value: 'Włącza AntiSpam, AntiRaid, AntiScam + OCR, AntiAlt, Verification, Tickets, Appeals, logi i Security Score.', inline: false },
+            { name: 'Reset', value: 'Aby naprawdę usunąć kanały i stworzyć nowy układ, użyj `/gamingserver reset potwierdz:USUN WSZYSTKO`.', inline: false },
+          ]
+        )],
+        ephemeral: true,
+      });
+    }
+
+    if (sub === 'security') {
+      await interaction.deferReply({ ephemeral: true });
+      const refs = {
+        verifiedRole: interaction.guild.roles.cache.find(r => r.name === 'Zweryfikowany'),
+        unverifiedRole: interaction.guild.roles.cache.find(r => r.name === 'Niezweryfikowany'),
+        mutedRole: interaction.guild.roles.cache.find(r => r.name === '🔇 Muted'),
+        modRole: interaction.guild.roles.cache.find(r => r.name === '🔨 Moderator'),
+        adminRole: interaction.guild.roles.cache.find(r => r.name === '🛡️ Admin'),
+        modLogChannel: interaction.guild.channels.cache.find(ch => ch.name === '🔧│mod-log'),
+        securityLogChannel: interaction.guild.channels.cache.find(ch => ch.name === '🛡️│security-log'),
+        ticketLogChannel: interaction.guild.channels.cache.find(ch => ch.name === '📨│ticket-log'),
+        scamReportChannel: interaction.guild.channels.cache.find(ch => ch.name === '🚨│zglos-scam'),
+        appealChannel: interaction.guild.channels.cache.find(ch => ch.name === '📝│appeal'),
+        verifyChannel: interaction.guild.channels.cache.find(ch => ch.name === '✅│weryfikacja'),
+        ticketChannel: interaction.guild.channels.cache.find(ch => ch.name === '🎫│ticket'),
+        supportCategory: interaction.guild.channels.cache.find(ch => ch.name === '🎫 SUPPORT'),
+        chatCategory: interaction.guild.channels.cache.find(ch => ch.name === '💬 CHAT'),
+        languageRoleIds: {},
+        languageChannelIds: {},
+      };
+      for (const lang of SUPPORT_LANGUAGE_DEFINITIONS.filter(l => ['pl', 'en', 'tr', 'de', 'fr'].includes(l.code))) {
+        const role = interaction.guild.roles.cache.find(r => r.name === lang.roleName);
+        const channel = interaction.guild.channels.cache.find(ch => ch.name === lang.channelName);
+        if (role) refs.languageRoleIds[lang.code] = role.id;
+        if (channel) refs.languageChannelIds[lang.code] = channel.id;
+      }
+      await applyFullSecurityDefaultsAfterTemplate(interaction.guild, gc, refs);
+      return interaction.editReply({ embeds: [embed('#2ed573', '✅ Zabezpieczenia włączone', 'Włączono wszystkie dostępne zabezpieczenia bota na tym serwerze bez usuwania kanałów.')] });
+    }
+
+    if (sub === 'reset') {
+      const confirm = interaction.options.getString('potwierdz');
+      if (confirm !== 'USUN WSZYSTKO') {
+        return interaction.reply({
+          content: '❌ Reset anulowany. Aby potwierdzić, wpisz dokładnie `USUN WSZYSTKO` w opcji `potwierdz`.',
+          ephemeral: true,
+        });
+      }
+
+      const botMember = interaction.guild.members.me || await interaction.guild.members.fetchMe().catch(() => null);
+      if (!botMember?.permissions.has(PermissionFlagsBits.ManageChannels) || !botMember?.permissions.has(PermissionFlagsBits.ManageRoles)) {
+        return interaction.reply({ content: '❌ Bot potrzebuje uprawnień Manage Channels oraz Manage Roles. Najłatwiej dać mu Administrator.', ephemeral: true });
+      }
+
+      await interaction.deferReply({ ephemeral: true });
+      await interaction.user.send('⚠️ Startuję prywatny reset serwera gaming/streaming. Kanały zostaną usunięte, a bot utworzy nowy układ.').catch(() => {});
+
+      const result = await setupPrivateGamingStreamingServer(interaction.guild, gc, { deleteExisting: true, createBackup: true });
+      const doneText = `✅ Gotowe. Usunięto kanały: ${result.deleted}, błędy usuwania: ${result.failedDelete}, utworzono kanały/kategorie: ${result.channels}, backup configu: ${result.backupId || 'brak'}.`;
+      await interaction.user.send(doneText).catch(() => {});
+      return interaction.editReply({ embeds: [embed('#2ed573', '✅ Gaming/Streaming server gotowy', doneText)] }).catch(() => {});
+    }
+  }
+
+
   if (commandName === 'dashboard') {
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
