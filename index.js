@@ -626,12 +626,18 @@ function getSupportGuildIdFromEnv() {
 }
 
 function isConfiguredSupportGuild(guild) {
-  const supportGuildId = getSupportGuildIdFromEnv();
-  if (supportGuildId) return guild?.id === supportGuildId;
+  if (!guild?.id) return false;
 
-  // Fallback: jeśli SUPPORT_GUILD_ID nie jest ustawione, panel języka działa na serwerze,
-  // na którym /supportlang setup albo /gamingserver reset zapisał konfigurację.
-  const gc = guild?.id ? getGuildConfig(guild.id) : null;
+  const supportGuildId = getSupportGuildIdFromEnv();
+  const gamingGuildId = String(process.env.GAMING_SETUP_GUILD_ID || '').trim();
+  const gc = getGuildConfig(guild.id);
+
+  // Panel języka może działać zarówno na oficjalnym support serwerze,
+  // jak i na prywatnym serwerze gaming/streaming.
+  if (supportGuildId && guild.id === supportGuildId) return true;
+  if (gamingGuildId && guild.id === gamingGuildId) return true;
+
+  // Fallback: działa na każdym serwerze, na którym setup zapisał aktywną konfigurację.
   return !!(gc?.supportLanguages?.enabled && gc.supportLanguages.guildId === guild.id);
 }
 
@@ -1536,6 +1542,97 @@ function canUsePrivateGamingSetupMessage(message) {
   return { ok: true };
 }
 
+async function setupPrivateGamingLanguageSelection(guild, gc) {
+  if (!guild || guild.id !== PRIVATE_GAMING_SETUP_GUILD_ID) {
+    return { ok: false, error: `Ta funkcja działa tylko na serwerze ID ${PRIVATE_GAMING_SETUP_GUILD_ID}.` };
+  }
+
+  await guild.roles.fetch().catch(() => {});
+  await guild.channels.fetch().catch(() => {});
+
+  let verifiedRole = gc.verification?.roleId ? guild.roles.cache.get(gc.verification.roleId) : null;
+  if (!verifiedRole) verifiedRole = await getOrCreateRoleByName(guild, 'Zweryfikowany', '#22c55e', 'FenixExelent gaming language verification');
+
+  let unverifiedRole = gc.verification?.unverifiedRoleId ? guild.roles.cache.get(gc.verification.unverifiedRoleId) : null;
+  if (!unverifiedRole) unverifiedRole = await getOrCreateRoleByName(guild, 'Niezweryfikowany', '#747d8c', 'FenixExelent gaming language verification');
+
+  if (!gc.verification) gc.verification = { enabled: false, roleId: null, unverifiedRoleId: null, channelId: null };
+  gc.verification.enabled = true;
+  gc.verification.roleId = verifiedRole?.id || null;
+  gc.verification.unverifiedRoleId = unverifiedRole?.id || null;
+
+  const verifyCategory = await getOrCreateCategory(guild, '🔐 WERYFIKACJA').catch(() => null);
+  const chatCategory = await getOrCreateCategory(guild, '💬 CHAT').catch(() => null);
+
+  const verifyChannel = await getOrCreateTextChannelByName(guild, verifyCategory, '✅│weryfikacja', {
+    topic: 'Zweryfikuj się i wybierz język: PL / EN / TR / DE / FR.',
+    reason: 'FenixExelent gaming language verification channel',
+    permissionOverwrites: [
+      { id: guild.roles.everyone.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory], deny: [PermissionFlagsBits.SendMessages] },
+      ...(unverifiedRole ? [{ id: unverifiedRole.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory], deny: [PermissionFlagsBits.SendMessages] }] : []),
+      ...(verifiedRole ? [{ id: verifiedRole.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory], deny: [PermissionFlagsBits.SendMessages] }] : []),
+    ],
+  });
+
+  gc.verification.channelId = verifyChannel?.id || null;
+
+  const cfg = ensureSupportLanguagesConfig(gc);
+  cfg.enabled = true;
+  cfg.guildId = guild.id;
+  cfg.verifyChannelId = verifyChannel?.id || null;
+  cfg.categoryId = chatCategory?.id || null;
+  cfg.supported = ['pl', 'en', 'tr', 'de', 'fr'];
+  cfg.roleIds = cfg.roleIds || {};
+  cfg.channelIds = cfg.channelIds || {};
+
+  const createdRoles = [];
+  const createdChannels = [];
+
+  for (const lang of getSupportLanguageDefinitions(gc)) {
+    const role = await getOrCreateRoleByName(guild, lang.roleName, '#5865F2', `FenixExelent gaming language role ${lang.code}`);
+    if (!role) continue;
+
+    cfg.roleIds[lang.code] = role.id;
+    createdRoles.push(role);
+
+    const channel = await getOrCreateTextChannelByName(guild, chatCategory, lang.channelName, {
+      topic: lang.topic,
+      reason: `FenixExelent gaming language channel ${lang.code}`,
+      permissionOverwrites: [
+        { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
+        { id: role.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AddReactions] },
+        ...(unverifiedRole ? [{ id: unverifiedRole.id, deny: [PermissionFlagsBits.ViewChannel] }] : []),
+      ],
+    });
+
+    if (!channel) continue;
+    cfg.channelIds[lang.code] = channel.id;
+    createdChannels.push(channel);
+
+    await channel.permissionOverwrites.edit(guild.roles.everyone, { ViewChannel: false }).catch(() => {});
+    if (unverifiedRole) await channel.permissionOverwrites.edit(unverifiedRole, { ViewChannel: false }).catch(() => {});
+    if (verifiedRole) await channel.permissionOverwrites.delete(verifiedRole, 'FenixExelent: allow language role to control channel access').catch(() => {});
+    await channel.permissionOverwrites.edit(role, {
+      ViewChannel: true,
+      SendMessages: true,
+      ReadMessageHistory: true,
+      AddReactions: true,
+    }).catch(() => {});
+  }
+
+  if (verifyChannel) await sendVerifyPanel(verifyChannel).catch(() => {});
+  saveConfig();
+
+  return {
+    ok: true,
+    verifyChannel,
+    verifiedRole,
+    unverifiedRole,
+    createdRoles,
+    createdChannels,
+  };
+}
+
 function collectPrivateGamingSecurityRefs(guild) {
   const refs = {
     verifiedRole: guild.roles.cache.find(r => r.name === 'Zweryfikowany'),
@@ -1591,6 +1688,7 @@ client.on('messageCreate', async (message) => {
         [
           { name: 'Podgląd', value: '`!gamingserver preview`', inline: false },
           { name: 'Tylko zabezpieczenia', value: '`!gamingserver security`', inline: false },
+          { name: 'Wybór języka', value: '`!gamingserver language`', inline: false },
           { name: 'Pełny reset', value: '`!gamingserver reset USUN WSZYSTKO`', inline: false },
         ]
       )],
@@ -1609,6 +1707,35 @@ client.on('messageCreate', async (message) => {
           { name: 'Role', value: 'Admin, Moderator, Streamer, Kick, TikTok, VIP, Zweryfikowany, Niezweryfikowany, Muted i role językowe.', inline: false },
           { name: 'Zabezpieczenia', value: 'AntiSpam, AntiRaid, AntiScam + OCR, AntiAlt, Verification, Tickets, Appeals i logi.', inline: false },
           { name: 'Reset', value: 'Pełny reset: `!gamingserver reset USUN WSZYSTKO`', inline: false },
+        ]
+      )],
+    }).catch(() => {});
+    return;
+  }
+
+  if (sub === 'language' || sub === 'jezyk' || sub === 'język') {
+    const botMember = message.guild.members.me || await message.guild.members.fetchMe().catch(() => null);
+    if (!botMember?.permissions.has(PermissionFlagsBits.ManageChannels) || !botMember?.permissions.has(PermissionFlagsBits.ManageRoles)) {
+      await message.reply('❌ Bot potrzebuje uprawnień **Manage Channels** i **Manage Roles**. Najłatwiej nadać mu Administratora.').catch(() => {});
+      return;
+    }
+
+    const result = await setupPrivateGamingLanguageSelection(message.guild, gc);
+    if (!result.ok) {
+      await message.reply(`❌ ${result.error}`).catch(() => {});
+      return;
+    }
+
+    await message.reply({
+      embeds: [embed(
+        '#5865F2',
+        '🌍 Wybór języka został dodany',
+        `${result.verifyChannel ? `Panel znajduje się na <#${result.verifyChannel.id}>.` : 'Panel został przygotowany.'}
+
+Dostępne języki: 🇵🇱 Polski, 🇬🇧 English, 🇹🇷 Türkçe, 🇩🇪 Deutsch, 🇫🇷 Français.`,
+        [
+          { name: 'Działanie', value: 'Kliknięcie języka nada rolę językową, rolę Zweryfikowany i odblokuje odpowiedni kanał.', inline: false },
+          { name: 'Zmiana języka', value: 'Wybranie innego języka usuwa poprzednią rolę językową.', inline: false },
         ]
       )],
     }).catch(() => {});
@@ -1670,7 +1797,7 @@ client.on('messageCreate', async (message) => {
     return;
   }
 
-  await message.reply('❌ Nieznana opcja. Użyj `!gamingserver preview`, `!gamingserver security` albo `!gamingserver reset USUN WSZYSTKO`.').catch(() => {});
+  await message.reply('❌ Nieznana opcja. Użyj `!gamingserver preview`, `!gamingserver security`, `!gamingserver language` albo `!gamingserver reset USUN WSZYSTKO`.').catch(() => {});
 });
 
 // ─── STATS UPDATE ──────────────────────────────────────────────────────────
