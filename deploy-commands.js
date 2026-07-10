@@ -26,23 +26,6 @@ const commands = [
 
 
   new SlashCommandBuilder()
-    .setName('gamingserver')
-    .setDescription('🎮 Prywatny setup serwera gaming/streaming')
-    .addSubcommand(s => s
-      .setName('preview')
-      .setDescription('Pokaż, co bot utworzy bez usuwania kanałów'))
-    .addSubcommand(s => s
-      .setName('security')
-      .setDescription('Włącz wszystkie zabezpieczenia bota bez usuwania kanałów'))
-    .addSubcommand(s => s
-      .setName('reset')
-      .setDescription('USUWA wszystkie kanały i tworzy nowy serwer gaming/streaming')
-      .addStringOption(o => o
-        .setName('potwierdz')
-        .setDescription('Wpisz dokładnie: USUN WSZYSTKO')
-        .setRequired(true))),
-
-  new SlashCommandBuilder()
     .setName('securityignore')
     .setDescription('🧾 Ignorowane kanały/role dla automatycznych zabezpieczeń')
     .addSubcommand(s => s.setName('channel').setDescription('Dodaj ignorowany kanał').addChannelOption(o => o.setName('kanal').setDescription('Kanał').setRequired(true)))
