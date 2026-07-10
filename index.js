@@ -1509,6 +1509,170 @@ async function setupPrivateGamingStreamingServer(guild, gc, options = {}) {
   return result;
 }
 
+
+// ─── FALLBACK TEXT COMMAND: PRIVATE GAMING SERVER SETUP ─────────────────────
+// Działa bez rejestrowania slash commands. Użycie:
+// !gamingserver preview
+// !gamingserver security
+// !gamingserver reset USUN WSZYSTKO
+function canUsePrivateGamingSetupMessage(message) {
+  if (!message.guild) return { ok: false, error: 'Tej komendy można używać tylko na serwerze.' };
+
+  if (message.guild.id !== PRIVATE_GAMING_SETUP_GUILD_ID) {
+    return {
+      ok: false,
+      error: `Ta komenda działa tylko na prywatnym serwerze ID ${PRIVATE_GAMING_SETUP_GUILD_ID}.`,
+    };
+  }
+
+  const ownerIds = getPrivateGamingSetupOwnerIds(message.guild);
+  if (!ownerIds.includes(message.author.id) && message.author.id !== message.guild.ownerId) {
+    return {
+      ok: false,
+      error: 'Ta komenda jest prywatna i może jej używać tylko ustawiony właściciel serwera.',
+    };
+  }
+
+  return { ok: true };
+}
+
+function collectPrivateGamingSecurityRefs(guild) {
+  const refs = {
+    verifiedRole: guild.roles.cache.find(r => r.name === 'Zweryfikowany'),
+    unverifiedRole: guild.roles.cache.find(r => r.name === 'Niezweryfikowany'),
+    mutedRole: guild.roles.cache.find(r => r.name === '🔇 Muted'),
+    modRole: guild.roles.cache.find(r => r.name === '🔨 Moderator'),
+    adminRole: guild.roles.cache.find(r => r.name === '🛡️ Admin'),
+    modLogChannel: guild.channels.cache.find(ch => ch.name === '🔧│mod-log'),
+    securityLogChannel: guild.channels.cache.find(ch => ch.name === '🛡️│security-log'),
+    ticketLogChannel: guild.channels.cache.find(ch => ch.name === '📨│ticket-log'),
+    scamReportChannel: guild.channels.cache.find(ch => ch.name === '🚨│zglos-scam'),
+    appealChannel: guild.channels.cache.find(ch => ch.name === '📝│appeal'),
+    verifyChannel: guild.channels.cache.find(ch => ch.name === '✅│weryfikacja'),
+    ticketChannel: guild.channels.cache.find(ch => ch.name === '🎫│ticket'),
+    supportCategory: guild.channels.cache.find(ch => ch.name === '🎫 SUPPORT'),
+    chatCategory: guild.channels.cache.find(ch => ch.name === '💬 CHAT'),
+    languageRoleIds: {},
+    languageChannelIds: {},
+  };
+
+  for (const lang of SUPPORT_LANGUAGE_DEFINITIONS.filter(l => ['pl', 'en', 'tr', 'de', 'fr'].includes(l.code))) {
+    const role = guild.roles.cache.find(r => r.name === lang.roleName);
+    const channel = guild.channels.cache.find(ch => ch.name === lang.channelName);
+    if (role) refs.languageRoleIds[lang.code] = role.id;
+    if (channel) refs.languageChannelIds[lang.code] = channel.id;
+  }
+
+  return refs;
+}
+
+client.on('messageCreate', async (message) => {
+  if (!message.guild || message.author.bot) return;
+
+  const content = String(message.content || '').trim();
+  if (!/^!gamingserver(?:\s|$)/i.test(content)) return;
+
+  const access = canUsePrivateGamingSetupMessage(message);
+  if (!access.ok) {
+    await message.reply(`❌ ${access.error}`).catch(() => {});
+    return;
+  }
+
+  const args = content.split(/\s+/);
+  const sub = String(args[1] || '').toLowerCase();
+  const gc = getGuildConfig(message.guild.id);
+
+  if (!sub || sub === 'help') {
+    await message.reply({
+      embeds: [embed(
+        '#3b82f6',
+        '🎮 Prywatny setup Gaming/Streaming',
+        'Ta wersja działa przez zwykłą wiadomość i nie wymaga rejestrowania komend slash.',
+        [
+          { name: 'Podgląd', value: '`!gamingserver preview`', inline: false },
+          { name: 'Tylko zabezpieczenia', value: '`!gamingserver security`', inline: false },
+          { name: 'Pełny reset', value: '`!gamingserver reset USUN WSZYSTKO`', inline: false },
+        ]
+      )],
+    }).catch(() => {});
+    return;
+  }
+
+  if (sub === 'preview') {
+    await message.reply({
+      embeds: [embed(
+        '#3b82f6',
+        '🎮 Gaming/Streaming Template — preview',
+        'Bot utworzy nowy serwer pod gaming, Kick, TikTok, YouTube i streaming.',
+        [
+          { name: 'Kanały', value: 'Start, Informacje, Weryfikacja, Chat PL/EN/TR/DE/FR, Streaming, Gaming, Support, Voice i Staff.', inline: false },
+          { name: 'Role', value: 'Admin, Moderator, Streamer, Kick, TikTok, VIP, Zweryfikowany, Niezweryfikowany, Muted i role językowe.', inline: false },
+          { name: 'Zabezpieczenia', value: 'AntiSpam, AntiRaid, AntiScam + OCR, AntiAlt, Verification, Tickets, Appeals i logi.', inline: false },
+          { name: 'Reset', value: 'Pełny reset: `!gamingserver reset USUN WSZYSTKO`', inline: false },
+        ]
+      )],
+    }).catch(() => {});
+    return;
+  }
+
+  if (sub === 'security') {
+    const botMember = message.guild.members.me || await message.guild.members.fetchMe().catch(() => null);
+    if (!botMember?.permissions.has(PermissionFlagsBits.ManageChannels) || !botMember?.permissions.has(PermissionFlagsBits.ManageRoles)) {
+      await message.reply('❌ Bot potrzebuje uprawnień **Manage Channels** i **Manage Roles**. Najłatwiej nadać mu Administratora.').catch(() => {});
+      return;
+    }
+
+    await message.guild.channels.fetch().catch(() => {});
+    await message.guild.roles.fetch().catch(() => {});
+    const refs = collectPrivateGamingSecurityRefs(message.guild);
+    await applyFullSecurityDefaultsAfterTemplate(message.guild, gc, refs);
+    await message.reply('✅ Włączyłem wszystkie dostępne zabezpieczenia bez usuwania kanałów.').catch(() => {});
+    return;
+  }
+
+  if (sub === 'reset') {
+    const confirmation = args.slice(2).join(' ');
+    if (confirmation !== 'USUN WSZYSTKO') {
+      await message.reply('❌ Reset anulowany. Wpisz dokładnie: `!gamingserver reset USUN WSZYSTKO`').catch(() => {});
+      return;
+    }
+
+    const botMember = message.guild.members.me || await message.guild.members.fetchMe().catch(() => null);
+    if (!botMember?.permissions.has(PermissionFlagsBits.ManageChannels) || !botMember?.permissions.has(PermissionFlagsBits.ManageRoles)) {
+      await message.reply('❌ Bot potrzebuje uprawnień **Manage Channels** i **Manage Roles**. Najłatwiej nadać mu Administratora.').catch(() => {});
+      return;
+    }
+
+    await message.author.send(
+      `⚠️ Rozpoczynam reset serwera **${message.guild.name}** (${message.guild.id}). Kanały zostaną usunięte, a następnie utworzone od nowa.`
+    ).catch(() => {});
+
+    await message.reply('⚠️ Potwierdzenie przyjęte. Wynik wyślę Ci w prywatnej wiadomości, ponieważ ten kanał zostanie usunięty.').catch(() => {});
+
+    try {
+      const result = await setupPrivateGamingStreamingServer(message.guild, gc, {
+        deleteExisting: true,
+        createBackup: true,
+      });
+
+      const doneText =
+        `✅ Gotowe na serwerze **${message.guild.name}**.\n` +
+        `Usunięte kanały: ${result.deleted}\n` +
+        `Błędy usuwania: ${result.failedDelete}\n` +
+        `Utworzone kanały/kategorie: ${result.channels}\n` +
+        `Backup konfiguracji: ${result.backupId || 'brak'}`;
+
+      await message.author.send(doneText).catch(() => {});
+    } catch (error) {
+      console.error('Private gaming text reset error:', error);
+      await message.author.send(`❌ Reset nie powiódł się: ${error?.message || String(error)}`).catch(() => {});
+    }
+    return;
+  }
+
+  await message.reply('❌ Nieznana opcja. Użyj `!gamingserver preview`, `!gamingserver security` albo `!gamingserver reset USUN WSZYSTKO`.').catch(() => {});
+});
+
 // ─── STATS UPDATE ──────────────────────────────────────────────────────────
 async function updateStats(guild) {
   const gc = getGuildConfig(guild.id);
