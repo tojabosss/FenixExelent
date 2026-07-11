@@ -15,9 +15,6 @@ const {
   ChannelType,
   AuditLogEvent,
   MessageFlags,
-  ModalBuilder,
-  TextInputBuilder,
-  TextInputStyle,
 } = require('discord.js');
 
 require('dotenv').config();
@@ -58,10 +55,7 @@ function loadConfig() {
 }
 
 function saveConfig() {
-  const tempPath = `${CONFIG_PATH}.tmp`;
-  const payload = JSON.stringify(config, null, 2);
-  fs.writeFileSync(tempPath, payload, 'utf8');
-  fs.renameSync(tempPath, CONFIG_PATH);
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
 }
 
 function getGuildConfig(guildId) {
@@ -172,11 +166,6 @@ verification: {
   roleId: null,
   unverifiedRoleId: null,
   channelId: null,
-  logChannelId: null,
-  minimumAccountAgeDays: 1,
-  requireAvatar: false,
-  maxAttempts: 5,
-  stats: { verified: 0, failed: 0, blocked: 0 },
 },
 
 reactionRoles: {
@@ -218,8 +207,6 @@ const joinMap    = new Map(); // guildId -> timestamp[]
 const recentJoinMap = new Map(); // guildId:userId -> timestamp
 const fastJoinRiskGiven = new Set(); // guildId:userId
 const scamReports = new Map(); // reportId -> report data
-const verificationChallenges = new Map(); // nonce -> challenge data
-const verificationAttempts = new Map(); // guildId:userId -> failed attempts
 
 // ─── HELPERS ───────────────────────────────────────────────────────────────
 function embed(color, title, desc, fields = []) {
@@ -337,9 +324,9 @@ function isStaffMember(member, gc) {
   return false;
 }
 
-function requireSecurityPermission() {
-  // Public command mode: every server member may invoke configuration commands.
-  return null;
+function requireSecurityPermission(interaction, gc) {
+  if (isStaffMember(interaction.member, gc)) return null;
+  return interaction.reply({ content: '❌ Brak uprawnień do tej komendy.', flags: MessageFlags.Ephemeral });
 }
 
 function getAccountAgeDays(user) {
@@ -519,7 +506,7 @@ async function disableEmergencyMode(guild, gc) {
 
 async function ensureVerificationForAntiAlt(guild, gc) {
   if (!gc.verification) {
-    gc.verification = defaultGuildConfig().verification;
+    gc.verification = { enabled: false, roleId: null, unverifiedRoleId: null, channelId: null };
   }
 
   let createdSomething = false;
@@ -1066,6 +1053,10 @@ client.on('messageCreate', async (message) => {
   };
   const resolvedCommand = aliases[command] || command;
   if (!['!rolepanel setup', '!rolepanel status', '!rolepanel off'].includes(resolvedCommand)) return;
+
+  if (!canManageReactionRoles(message)) {
+    return message.reply('❌ Tej komendy może użyć tylko właściciel serwera lub administrator.').catch(() => {});
+  }
 
   const gc = getGuildConfig(message.guild.id);
   const cfg = ensureReactionRolesConfig(gc);
@@ -1993,6 +1984,19 @@ client.on('interactionCreate', async (interaction) => {
     return interaction.reply({ content: '❌ Tej komendy można używać tylko na serwerze.', flags: MessageFlags.Ephemeral });
   }
 
+  const SUPPORT_GUILD_ID = process.env.SUPPORT_GUILD_ID || '1492793536930910310';
+  const OWNER_ID = process.env.OWNER_ID || '1075478964505677824';
+
+  if (
+    interaction.guild.id === SUPPORT_GUILD_ID &&
+    interaction.user.id !== OWNER_ID
+  ) {
+    return interaction.reply({
+      content: '❌ Na oficjalnym serwerze supportowym tylko właściciel bota może używać komend.',
+      flags: MessageFlags.Ephemeral
+    });
+  }
+
   const gc = getGuildConfig(interaction.guild.id);
   const { commandName } = interaction;
 
@@ -2009,9 +2013,6 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 async function handleCommand(interaction, gc, commandName) {
-  // PUBLIC COMMAND MODE: all registered slash commands are available to every member.
-  // Discord still blocks actions when the bot itself lacks required permissions or role hierarchy.
-
 
 // ── help ─────────────────────────────────────────────
 if (commandName === 'help') {
@@ -2025,7 +2026,7 @@ if (commandName === 'help') {
           { name: '🚫 AntiSpam',        value: '`antispam on` `antispam off` `antispam set` `antispam log`',                                    inline: true  },
           { name: '🚨 AntiRaid',        value: '`antiraid on` `antiraid off` `antiraid set` `antiraid lockdown` `antiraid log`',                inline: true  },
           { name: '🔒 Channel Guard',   value: '`channelguard on` `channelguard off` `channelguard whitelist` `channelguard log`',              inline: true  },
-          { name: '✅ Weryfikacja',     value: '`verify setup` `verify panel` `verify on/off` `verify status` `verify sync`',               inline: true  },
+          { name: '✅ Weryfikacja',     value: '`verification setup` `verification on` `verification off` `verification panel`',               inline: true  },
           { name: '🎫 Tickety',         value: '`ticket setup` `ticket on` `ticket off` `ticket panel`',                                       inline: true  },
           { name: '🔧 Moderacja',       value: '`warn` `warnings` `clearwarns` `kick` `ban` `unban` `unmute`',                                 inline: true  },
           { name: '📋 Mod Log',         value: '`modlog` `securityignore` `privacy` `terms` `about` `support`',                                                       inline: true  },
@@ -2208,6 +2209,9 @@ if (commandName === 'help') {
 
   // ── antialt ─────────────────────────────────────────────────────────
   if (commandName === 'antialt') {
+    const perm = requireSecurityPermission(interaction, gc);
+    if (perm) return perm;
+
     const sub = interaction.options.getSubcommand();
     if (!gc.antialt) gc.antialt = { enabled: false, minAccountAgeDays: 7, action: 'verify', logChannel: null, riskPoints: 20 };
 
@@ -2260,6 +2264,9 @@ if (commandName === 'help') {
 
   // ── risk ─────────────────────────────────────────────────────────────
   if (commandName === 'risk') {
+    const perm = requireSecurityPermission(interaction, gc);
+    if (perm) return perm;
+
     const user = interaction.options.getUser('uzytkownik') || interaction.user;
     const data = getUserRiskData(gc, user.id);
     const level = getRiskLevel(data.score);
@@ -2368,6 +2375,9 @@ if (commandName === 'help') {
 
   // ── securityignore ───────────────────────────────────────────────────
   if (commandName === 'securityignore') {
+    const perm = requireSecurityPermission(interaction, gc);
+    if (perm) return perm;
+
     const sub = interaction.options.getSubcommand();
     const ignore = ensureSecurityIgnore(gc);
 
@@ -2407,6 +2417,9 @@ if (commandName === 'help') {
 
   // ── backup ───────────────────────────────────────────────────────────
   if (commandName === 'backup') {
+    if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+      return interaction.reply({ content: '❌ Tylko administrator może używać backupów.', flags: MessageFlags.Ephemeral });
+    }
     const sub = interaction.options.getSubcommand();
     if (!gc.backups) gc.backups = {};
 
@@ -2493,6 +2506,10 @@ if (commandName === 'help') {
 
   // ── emergency ────────────────────────────────────────────────────────
   if (commandName === 'emergency') {
+    if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+      return interaction.reply({ content: '❌ Tylko administrator może użyć Emergency Mode.', flags: MessageFlags.Ephemeral });
+    }
+
     const sub = interaction.options.getSubcommand();
     if (!gc.emergency) gc.emergency = { active: false, previous: null };
 
@@ -2537,6 +2554,15 @@ if (commandName === 'help') {
 
   // ── refreshbot ────────────────────────────────────────────────────────
   if (commandName === 'refreshbot') {
+    const OWNER_ID = process.env.OWNER_ID || '1075478964505677824';
+
+    if (interaction.user.id !== OWNER_ID) {
+      return interaction.reply({
+        content: '❌ Tylko właściciel bota może użyć tej komendy.',
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     let refreshed = 0;
@@ -2584,6 +2610,13 @@ if (commandName === 'help') {
 
   // ── ocrscan ───────────────────────────────────────────────────────────
   if (commandName === 'ocrscan') {
+    if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
+      return interaction.reply({
+        content: '❌ Potrzebujesz uprawnienia Zarządzanie serwerem, aby zmieniać OCR AntiScam.',
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+
     const sub = interaction.options.getSubcommand();
     if (!gc.antiscam) gc.antiscam = defaultGuildConfig().antiscam;
 
@@ -3010,141 +3043,169 @@ if (commandName === 'antiraid') {
     }
   }
 
-  // ── verify v2 ─────────────────────────────────────────────────────────
-  if (commandName === 'verify') {
+  // ── verification ──────────────────────────────────────────────────────
+  if (commandName === 'verification') {
     const sub = interaction.options.getSubcommand();
+
+    if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
+      return interaction.reply({
+        content: '❌ Potrzebujesz uprawnienia **Zarządzanie serwerem**.',
+        flags: MessageFlags.Ephemeral,
+      });
+    }
 
     if (sub === 'setup') {
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-      await interaction.guild.roles.fetch().catch(() => {});
-      await interaction.guild.channels.fetch().catch(() => {});
 
+      const role = interaction.options.getRole('rola');
       const botMember = interaction.guild.members.me || await interaction.guild.members.fetchMe().catch(() => null);
-      if (!botMember?.permissions.has(PermissionFlagsBits.ManageRoles) || !botMember.permissions.has(PermissionFlagsBits.ManageChannels)) {
-        return interaction.editReply('❌ Bot potrzebuje uprawnień **Zarządzanie rolami** i **Zarządzanie kanałami**.');
+
+      if (!botMember?.permissions.has(PermissionFlagsBits.ManageRoles)) {
+        return interaction.editReply('❌ Bot potrzebuje uprawnienia **Zarządzanie rolami**.');
       }
 
-      let memberRole = interaction.options.getRole('member') ||
-        (gc.verification.roleId ? interaction.guild.roles.cache.get(gc.verification.roleId) : null) ||
-        interaction.guild.roles.cache.find(r => ['member', 'zweryfikowany', 'verified'].includes(r.name.toLowerCase()));
-
-      if (!memberRole) {
-        memberRole = await interaction.guild.roles.create({
-          name: 'Member',
-          colors: { primaryColor: '#22c55e' },
-          reason: 'FenixExelent Verification v2: rola zweryfikowanych',
-        }).catch(() => null);
+      if (role.managed || role.id === interaction.guild.roles.everyone.id) {
+        return interaction.editReply('❌ Wybierz zwykłą rolę serwerową, a nie rolę integracji lub @everyone.');
       }
 
-      let unverifiedRole = interaction.options.getRole('unverified') ||
-        (gc.verification.unverifiedRoleId ? interaction.guild.roles.cache.get(gc.verification.unverifiedRoleId) : null) ||
-        interaction.guild.roles.cache.find(r => ['niezweryfikowany', 'unverified'].includes(r.name.toLowerCase()));
+      if (botMember.roles.highest.comparePositionTo(role) <= 0) {
+        return interaction.editReply(
+          `❌ Rola bota musi znajdować się **wyżej** niż ${role} w ustawieniach ról.`
+        );
+      }
+
+      gc.verification.roleId = role.id;
+
+      let unverifiedRole = gc.verification.unverifiedRoleId
+        ? interaction.guild.roles.cache.get(gc.verification.unverifiedRoleId)
+        : null;
+
+      if (!unverifiedRole) {
+        unverifiedRole = interaction.guild.roles.cache.find(
+          r => ['niezweryfikowany', 'unverified'].includes(r.name.toLowerCase())
+        );
+      }
 
       if (!unverifiedRole) {
         unverifiedRole = await interaction.guild.roles.create({
           name: 'Niezweryfikowany',
-          colors: { primaryColor: '#64748b' },
-          reason: 'FenixExelent Verification v2: rola przed weryfikacją',
+          colors: { primaryColor: '#747d8c' },
+          reason: 'FenixExelent Verification',
         }).catch(() => null);
       }
 
-      if (!memberRole || !unverifiedRole) return interaction.editReply('❌ Nie udało się utworzyć wymaganych ról.');
-      if (memberRole.managed || unverifiedRole.managed) return interaction.editReply('❌ Role integracji nie mogą być użyte do weryfikacji.');
-      if (botMember.roles.highest.comparePositionTo(memberRole) <= 0 || botMember.roles.highest.comparePositionTo(unverifiedRole) <= 0) {
-        return interaction.editReply('❌ Przenieś rolę bota **nad rolę Member i Niezweryfikowany**, a następnie uruchom setup ponownie.');
+      if (!unverifiedRole) {
+        return interaction.editReply('❌ Nie udało się utworzyć roli **Niezweryfikowany**.');
       }
 
-      let verifyChannel = interaction.options.getChannel('kanal') ||
-        (gc.verification.channelId ? interaction.guild.channels.cache.get(gc.verification.channelId) : null);
+      if (botMember.roles.highest.comparePositionTo(unverifiedRole) <= 0) {
+        return interaction.editReply(
+          `❌ Rola bota musi znajdować się **wyżej** niż ${unverifiedRole}.`
+        );
+      }
+
+      gc.verification.unverifiedRoleId = unverifiedRole.id;
+
+      let verifyChannel = gc.verification.channelId
+        ? interaction.guild.channels.cache.get(gc.verification.channelId)
+        : null;
+
       if (!verifyChannel) {
         const category = await getOrCreateCategory(interaction.guild, '🔐 WERYFIKACJA');
-        verifyChannel = await getOrCreateText(interaction.guild, category, '✅│weryfikacja', []);
+        verifyChannel = await getOrCreateText(
+          interaction.guild,
+          category,
+          '✅│weryfikacja',
+          [{ id: interaction.guild.roles.everyone.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] }]
+        );
+        gc.verification.channelId = verifyChannel.id;
       }
-      const logChannel = interaction.options.getChannel('logi');
 
-      gc.verification = Object.assign(defaultGuildConfig().verification, gc.verification, {
-        enabled: true,
-        roleId: memberRole.id,
-        unverifiedRoleId: unverifiedRole.id,
-        channelId: verifyChannel.id,
-        logChannelId: logChannel?.id || gc.verification.logChannelId || gc.modLog?.channelId || null,
-      });
-
-      // Rola Niezweryfikowany widzi wyłącznie kanał weryfikacji.
+      await interaction.guild.channels.fetch().catch(() => {});
       for (const [, ch] of interaction.guild.channels.cache) {
         if (![ChannelType.GuildText, ChannelType.GuildVoice, ChannelType.GuildCategory].includes(ch.type)) continue;
+
         if (ch.id === verifyChannel.id) {
-          await ch.permissionOverwrites.edit(interaction.guild.roles.everyone, { ViewChannel: true, SendMessages: false }).catch(() => {});
-          await ch.permissionOverwrites.edit(unverifiedRole, { ViewChannel: true, ReadMessageHistory: true, SendMessages: false }).catch(() => {});
+          await ch.permissionOverwrites.edit(unverifiedRole, {
+            ViewChannel: true,
+            ReadMessageHistory: true,
+            SendMessages: true,
+          }).catch(() => {});
         } else {
-          await ch.permissionOverwrites.edit(unverifiedRole, { ViewChannel: false }).catch(() => {});
+          await ch.permissionOverwrites.edit(unverifiedRole, {
+            ViewChannel: false,
+          }).catch(() => {});
         }
       }
 
+      gc.verification.enabled = true;
       saveConfig();
-      await verifyChannel.bulkDelete(20).catch(() => {});
-      await sendVerifyPanel(verifyChannel, gc).catch(console.error);
 
-      return interaction.editReply({ embeds: [embed(
-        '#22c55e',
-        '🛡️ Verification v2 skonfigurowany',
-        'Profesjonalny system weryfikacji jest aktywny.',
-        [
-          { name: 'Po wejściu', value: `<@&${unverifiedRole.id}>`, inline: true },
-          { name: 'Po weryfikacji', value: `<@&${memberRole.id}>`, inline: true },
-          { name: 'Panel', value: `<#${verifyChannel.id}>`, inline: true },
-          { name: 'Logi', value: gc.verification.logChannelId ? `<#${gc.verification.logChannelId}>` : 'Brak', inline: true },
-        ]
-      )] });
+      await verifyChannel.bulkDelete(10).catch(() => {});
+      await sendVerifyPanel(verifyChannel).catch(() => {});
+
+      return interaction.editReply({
+        embeds: [embed(
+          '#2ed573',
+          '✅ Weryfikacja skonfigurowana i włączona',
+          `Rola po weryfikacji: <@&${role.id}>\n` +
+          `Rola przed weryfikacją: <@&${unverifiedRole.id}>\n` +
+          `Panel: <#${verifyChannel.id}>`
+        )],
+      });
+    }
+
+    if (sub === 'on') {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      const result = await ensureVerificationForAntiAlt(interaction.guild, gc);
+
+      if (!result.ok) {
+        return interaction.editReply(
+          '❌ Nie udało się uruchomić weryfikacji. Bot potrzebuje uprawnień **Zarządzanie rolami** i **Zarządzanie kanałami**.'
+        );
+      }
+
+      gc.verification.enabled = true;
+      saveConfig();
+
+      return interaction.editReply({
+        embeds: [embed(
+          '#2ed573',
+          '✅ Weryfikacja włączona',
+          `System jest aktywny. Panel: <#${result.verifyChannel.id}>`
+        )],
+      });
+    }
+
+    if (sub === 'off') {
+      gc.verification.enabled = false;
+      saveConfig();
+      return interaction.reply({
+        embeds: [embed('#ff4757', '❌ Weryfikacja wyłączona', 'System weryfikacji jest nieaktywny.')],
+        flags: MessageFlags.Ephemeral,
+      });
     }
 
     if (sub === 'panel') {
-      const channel = interaction.options.getChannel('kanal') || (gc.verification.channelId ? interaction.guild.channels.cache.get(gc.verification.channelId) : null);
-      if (!channel) return interaction.reply({ content: '❌ Najpierw użyj `/verify setup`.', flags: MessageFlags.Ephemeral });
-      await channel.bulkDelete(20).catch(() => {});
-      await sendVerifyPanel(channel, gc);
-      gc.verification.channelId = channel.id;
-      gc.verification.enabled = true;
-      saveConfig();
-      return interaction.reply({ content: `✅ Nowy panel wysłano na <#${channel.id}>.`, flags: MessageFlags.Ephemeral });
-    }
-
-    if (sub === 'on' || sub === 'off') {
-      gc.verification.enabled = sub === 'on';
-      saveConfig();
-      return interaction.reply({ content: sub === 'on' ? '✅ Verification v2 został włączony.' : '⛔ Verification v2 został wyłączony.', flags: MessageFlags.Ephemeral });
-    }
-
-    if (sub === 'sync') {
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-      const memberRole = interaction.guild.roles.cache.get(gc.verification.roleId);
-      const unverifiedRole = interaction.guild.roles.cache.get(gc.verification.unverifiedRoleId);
-      if (!memberRole || !unverifiedRole) return interaction.editReply('❌ Najpierw użyj `/verify setup`.');
-      await interaction.guild.members.fetch().catch(() => {});
-      let added = 0, removed = 0, failed = 0;
-      for (const [, member] of interaction.guild.members.cache) {
-        if (member.user.bot) continue;
-        try {
-          if (member.roles.cache.has(memberRole.id)) {
-            if (member.roles.cache.has(unverifiedRole.id)) { await member.roles.remove(unverifiedRole, 'Verification v2 sync'); removed++; }
-          } else if (!member.roles.cache.has(unverifiedRole.id)) {
-            await member.roles.add(unverifiedRole, 'Verification v2 sync'); added++;
-          }
-        } catch { failed++; }
-      }
-      return interaction.editReply(`✅ Synchronizacja zakończona. Nadano: **${added}**, usunięto: **${removed}**, błędy: **${failed}**.`);
-    }
 
-    if (sub === 'status') {
-      const v = gc.verification;
-      return interaction.reply({ embeds: [embed('#3b82f6', '🛡️ Verification v2 — status', 'Aktualna konfiguracja systemu.', [
-        { name: 'Status', value: v.enabled ? '✅ Aktywny' : '❌ Wyłączony', inline: true },
-        { name: 'Rola Member', value: v.roleId ? `<@&${v.roleId}>` : 'Brak', inline: true },
-        { name: 'Rola startowa', value: v.unverifiedRoleId ? `<@&${v.unverifiedRoleId}>` : 'Brak', inline: true },
-        { name: 'Kanał', value: v.channelId ? `<#${v.channelId}>` : 'Brak', inline: true },
-        { name: 'Zweryfikowani', value: `${v.stats?.verified || 0}`, inline: true },
-        { name: 'Nieudane próby', value: `${v.stats?.failed || 0}`, inline: true },
-      ])], flags: MessageFlags.Ephemeral });
+      const result = await ensureVerificationForAntiAlt(interaction.guild, gc);
+      if (!result.ok || !gc.verification.roleId) {
+        return interaction.editReply(
+          '❌ Najpierw skonfiguruj rolę przez `/verification setup rola:@Rola`.'
+        );
+      }
+
+      const channel = result.verifyChannel || interaction.channel;
+      await channel.bulkDelete(10).catch(() => {});
+      await sendVerifyPanel(channel);
+      gc.verification.enabled = true;
+      gc.verification.channelId = channel.id;
+      saveConfig();
+
+      return interaction.editReply({
+        embeds: [embed('#2ed573', '✅ Panel wysłany', `Panel weryfikacyjny wysłany na <#${channel.id}>.`)],
+      });
     }
   }
 
@@ -3169,6 +3230,22 @@ if (commandName === 'antiraid') {
   // ── botserver ──────────────────────────────────────────────────
   if (commandName === 'botserver') {
     const sub = interaction.options.getSubcommand();
+    const SUPPORT_GUILD_ID = process.env.SUPPORT_GUILD_ID || '1492793536930910310';
+
+    if (interaction.guild.id !== SUPPORT_GUILD_ID) {
+      return interaction.reply({
+        content: '❌ Ta komenda działa tylko na oficjalnym serwerze FenixExelent.',
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+
+    if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+      return interaction.reply({
+        content: '❌ Tylko administrator może użyć tej komendy.',
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+
     if (sub === 'setup') {
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       await setupOfficialBotServer(interaction.guild);
@@ -3520,7 +3597,7 @@ Check the \`komendy\` channel.`
         '`/antispam on/off/set/log`',
         '`/antiraid on/off/set/lockdown/log`',
         '`/channelguard on/off/whitelist/log`',
-        '`/verify setup/on/off/panel`',
+        '`/verification setup/on/off/panel`',
         '`/ticket setup/on/off/panel`',
         '`/scamdomains add/remove/list`',
         '`/warn`, `/warnings`, `/clearwarns`, `/kick`, `/ban`, `/unban`, `/unmute`',
@@ -3544,7 +3621,7 @@ Check the \`komendy\` channel.`
         '`/antispam on/off/set/log`',
         '`/antiraid on/off/set/lockdown/log`',
         '`/channelguard on/off/whitelist/log`',
-        '`/verify setup/on/off/panel`',
+        '`/verification setup/on/off/panel`',
         '`/ticket setup/on/off/panel`',
         '`/scamdomains add/remove/list`',
         '`/warn`, `/warnings`, `/clearwarns`, `/kick`, `/ban`, `/unban`, `/unmute`',
@@ -3604,101 +3681,41 @@ Important security alerts and warnings will be posted here.`
   }).catch(() => {});
 }
 
-function ensureVerificationStats(v) {
-  if (!v.stats) v.stats = { verified: 0, failed: 0, blocked: 0 };
-  return v.stats;
-}
-
-async function sendVerificationLog(guild, v, color, title, description) {
-  const channelId = v.logChannelId || getGuildConfig(guild.id).modLog?.channelId;
-  if (!channelId) return;
-  const ch = await guild.channels.fetch(channelId).catch(() => null);
-  if (ch?.isTextBased()) await ch.send({ embeds: [embed(color, title, description)] }).catch(() => {});
-}
-
-client.on('interactionCreate', async interaction => {
-  if (!interaction.isModalSubmit() || !interaction.customId.startsWith('verify:submit:') || !interaction.guild) return;
-  const nonce = interaction.customId.split(':')[2];
-  const challenge = verificationChallenges.get(nonce);
-  const gc = getGuildConfig(interaction.guild.id);
-  const v = gc.verification;
-
-  if (!challenge || challenge.guildId !== interaction.guild.id || challenge.userId !== interaction.user.id || challenge.expiresAt < Date.now()) {
-    verificationChallenges.delete(nonce);
-    return interaction.reply({ content: '❌ Kod wygasł. Kliknij przycisk i rozpocznij ponownie.', flags: MessageFlags.Ephemeral });
-  }
-
-  const answer = interaction.fields.getTextInputValue('answer').trim();
-  const accepted = interaction.fields.getTextInputValue('rules').trim().toLocaleUpperCase('pl-PL').replace(/Ę/g, 'E');
-  const key = `${interaction.guild.id}:${interaction.user.id}`;
-  if (answer !== challenge.answer || accepted !== 'AKCEPTUJE') {
-    const attempts = (verificationAttempts.get(key) || 0) + 1;
-    verificationAttempts.set(key, attempts);
-    ensureVerificationStats(v).failed++;
-    verificationChallenges.delete(nonce);
-    saveConfig();
-    await sendVerificationLog(interaction.guild, v, '#ef4444', '❌ Nieudana weryfikacja', `<@${interaction.user.id}> podał błędną odpowiedź. Próba **${attempts}/${v.maxAttempts || 5}**.`);
-    return interaction.reply({ content: `❌ Niepoprawna odpowiedź lub brak akceptacji regulaminu. Próba ${attempts}/${v.maxAttempts || 5}.`, flags: MessageFlags.Ephemeral });
-  }
-
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-  try {
-    const member = await interaction.guild.members.fetch(interaction.user.id);
-    const memberRole = await interaction.guild.roles.fetch(v.roleId).catch(() => null);
-    const unverifiedRole = v.unverifiedRoleId ? await interaction.guild.roles.fetch(v.unverifiedRoleId).catch(() => null) : null;
-    const botMember = interaction.guild.members.me || await interaction.guild.members.fetchMe();
-    if (!memberRole || botMember.roles.highest.comparePositionTo(memberRole) <= 0) throw new Error('ROLE_HIERARCHY');
-
-    await member.roles.add(memberRole, 'FenixExelent Verification v2: poprawna weryfikacja');
-    if (unverifiedRole) await member.roles.remove(unverifiedRole, 'FenixExelent Verification v2: użytkownik zweryfikowany').catch(() => {});
-
-    verificationChallenges.delete(nonce);
-    verificationAttempts.delete(key);
-    ensureVerificationStats(v).verified++;
-    saveConfig();
-    await sendVerificationLog(interaction.guild, v, '#22c55e', '✅ Użytkownik zweryfikowany', `<@${interaction.user.id}> otrzymał rolę <@&${memberRole.id}>.`);
-    return interaction.editReply({ embeds: [embed('#22c55e', '✅ Weryfikacja zakończona', `Witaj na **${interaction.guild.name}**! Otrzymałeś/aś rolę ${memberRole} i pełny dostęp do serwera.`)] });
-  } catch (err) {
-    console.error('Verification v2 role error:', err);
-    return interaction.editReply('❌ Nie udało się nadać roli. Administrator musi ustawić rolę bota wyżej niż Member i Niezweryfikowany.');
-  }
-});
-
 // ═══════════════════════════════════════════════════════════════════════════
 //  VERIFICATION PANEL
 // ═══════════════════════════════════════════════════════════════════════════
-async function sendVerifyPanel(channel, gc = null) {
-  const v = gc?.verification || {};
-  const row = new ActionRowBuilder().addComponents(
+async function sendVerifyPanel(channel) {
+
+  const verifyRow = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId('verify:start')
-      .setLabel('Rozpocznij weryfikację')
-      .setEmoji('🛡️')
-      .setStyle(ButtonStyle.Primary)
+      .setCustomId('verify_btn')
+      .setLabel('✅ Verify / Zweryfikuj się')
+      .setStyle(ButtonStyle.Success)
   );
+  const components = [verifyRow];
+  const extraDescription = '';
 
   await channel.send({
     embeds: [new EmbedBuilder()
-      .setColor('#2563eb')
-      .setTitle('🛡️ FenixExelent — Bezpieczna weryfikacja')
-      .setDescription(`**Witaj na serwerze!**
+      .setColor('#ff6b00')
+      .setTitle('✅ Weryfikacja / Verification — FenixExelent')
+      .setDescription(`🇵🇱 **Polski**
+Aby uzyskać dostęp do serwera, kliknij przycisk poniżej.
 
-Aby otrzymać pełny dostęp i rolę **Member**, wykonaj krótką weryfikację bezpieczeństwa.
-
-• przeczytaj i zaakceptuj regulamin
-• rozwiąż jednorazowe zadanie kontrolne
-• po poprawnej odpowiedzi rola zostanie nadana automatycznie
+📜 Upewnij się, że przeczytałeś/aś regulamin.
+Klikając przycisk, potwierdzasz akceptację zasad serwera.
 
 ━━━━━━━━━━━━━━━━━━━━
-🔒 Kod jest ważny przez **5 minut**. Nie udostępniaj go innym.`)
-      .addFields(
-        { name: 'Status', value: v.enabled === false ? '🔴 Wyłączony' : '🟢 Online', inline: true },
-        { name: 'Po weryfikacji', value: v.roleId ? `<@&${v.roleId}>` : 'Member', inline: true },
-        { name: 'Ochrona', value: 'Captcha • Anti-spam • Kontrola konta', inline: true }
-      )
-      .setFooter({ text: 'FenixExelent Security • Verification v2' })
-      .setTimestamp()],
-    components: [row],
+
+🇬🇧 **English**
+To access the server, click the button below.
+
+📜 Make sure you have read the rules.
+By clicking the button, you confirm that you accept the server rules.${extraDescription}`)
+      .setFooter({ text: 'FenixExelent 🔥' })
+      .setTimestamp()
+    ],
+    components,
   });
 }
 
@@ -3749,6 +3766,9 @@ client.on('interactionCreate', async (interaction) => {
 async function handleButton(interaction, gc) {
 
   if (interaction.customId.startsWith('appeal:')) {
+    if (!isStaffMember(interaction.member, gc)) {
+      return interaction.reply({ content: '❌ Tylko staff może obsłużyć appeal.', flags: MessageFlags.Ephemeral });
+    }
     const [, action, appealId] = interaction.customId.split(':');
     const appeals = ensureAppeals(gc);
     const appeal = appeals.cases?.[appealId];
@@ -3777,6 +3797,9 @@ async function handleButton(interaction, gc) {
   }
 
   if (interaction.customId.startsWith('scamreport:')) {
+    if (!isStaffMember(interaction.member, gc)) {
+      return interaction.reply({ content: '❌ Tylko staff może obsłużyć zgłoszenie scam.', flags: MessageFlags.Ephemeral });
+    }
 
     const [, action, reportId] = interaction.customId.split(':');
     const report = scamReports.get(reportId);
@@ -3847,6 +3870,9 @@ async function handleButton(interaction, gc) {
 
   // ── Lockdown Toggle ──
   if (interaction.customId === 'lockdown_toggle') {
+    if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+      return interaction.reply({ content: '❌ Brak uprawnień administratora.', flags: MessageFlags.Ephemeral });
+    }
     const aktywny = !gc.antiraid.lockdownActive;
     gc.antiraid.lockdownActive = aktywny;
     saveConfig();
@@ -3864,40 +3890,78 @@ async function handleButton(interaction, gc) {
     )], flags: MessageFlags.Ephemeral });
   }
 
-  // ── Verification v2 Button ──
-  if (interaction.customId === 'verify:start') {
-    const v = gc.verification;
-    if (!v?.enabled) return interaction.reply({ content: '❌ Weryfikacja jest obecnie wyłączona.', flags: MessageFlags.Ephemeral });
-
-    const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
-    const memberRole = v.roleId ? interaction.guild.roles.cache.get(v.roleId) : null;
-    if (!member || !memberRole) return interaction.reply({ content: '❌ System nie jest poprawnie skonfigurowany. Powiadom administratora.', flags: MessageFlags.Ephemeral });
-    if (member.roles.cache.has(memberRole.id)) return interaction.reply({ content: '✅ Jesteś już zweryfikowany/a.', flags: MessageFlags.Ephemeral });
-
-    const ageDays = getAccountAgeDays(interaction.user);
-    if (ageDays < Number(v.minimumAccountAgeDays || 0)) {
-      ensureVerificationStats(v).blocked++;
-      saveConfig();
-      await sendVerificationLog(interaction.guild, v, '#ef4444', '⛔ Weryfikacja zablokowana', `<@${interaction.user.id}> ma konto młodsze niż wymagane **${v.minimumAccountAgeDays} dni**.`);
-      return interaction.reply({ content: `❌ Twoje konto jest zbyt nowe. Minimalny wiek konta: **${v.minimumAccountAgeDays} dni**.`, flags: MessageFlags.Ephemeral });
+  // ── Verification Button ──
+  if (interaction.customId === 'verify_btn') {
+    if (!gc.verification?.enabled) {
+      return interaction.reply({
+        content: '❌ Weryfikacja jest aktualnie wyłączona. Administrator musi użyć `/verification on`.',
+        flags: MessageFlags.Ephemeral,
+      });
     }
-    if (v.requireAvatar && !interaction.user.avatar) return interaction.reply({ content: '❌ Aby się zweryfikować, ustaw avatar konta Discord.', flags: MessageFlags.Ephemeral });
 
-    const attemptKey = `${interaction.guild.id}:${interaction.user.id}`;
-    const failed = verificationAttempts.get(attemptKey) || 0;
-    if (failed >= Number(v.maxAttempts || 5)) return interaction.reply({ content: '❌ Przekroczono limit prób. Skontaktuj się z administracją.', flags: MessageFlags.Ephemeral });
+    const role = gc.verification.roleId
+      ? interaction.guild.roles.cache.get(gc.verification.roleId)
+      : null;
 
-    const a = Math.floor(Math.random() * 8) + 2;
-    const b = Math.floor(Math.random() * 8) + 2;
-    const nonce = makeReportId();
-    verificationChallenges.set(nonce, { guildId: interaction.guild.id, userId: interaction.user.id, answer: String(a + b), expiresAt: Date.now() + 5 * 60 * 1000 });
-    setTimeout(() => verificationChallenges.delete(nonce), 5 * 60 * 1000);
+    if (!role) {
+      return interaction.reply({
+        content: '❌ Rola weryfikacji nie istnieje. Administrator musi użyć `/verification setup`.',
+        flags: MessageFlags.Ephemeral,
+      });
+    }
 
-    const modal = new ModalBuilder().setCustomId(`verify:submit:${nonce}`).setTitle('FenixExelent Verification');
-    const answer = new TextInputBuilder().setCustomId('answer').setLabel(`Ile to ${a} + ${b}?`).setPlaceholder('Wpisz wynik').setRequired(true).setMinLength(1).setMaxLength(3).setStyle(TextInputStyle.Short);
-    const rules = new TextInputBuilder().setCustomId('rules').setLabel('Wpisz: AKCEPTUJĘ').setPlaceholder('AKCEPTUJĘ').setRequired(true).setMinLength(8).setMaxLength(12).setStyle(TextInputStyle.Short);
-    modal.addComponents(new ActionRowBuilder().addComponents(answer), new ActionRowBuilder().addComponents(rules));
-    return interaction.showModal(modal);
+    const botMember = interaction.guild.members.me || await interaction.guild.members.fetchMe().catch(() => null);
+    if (!botMember?.permissions.has(PermissionFlagsBits.ManageRoles)) {
+      return interaction.reply({
+        content: '❌ Bot nie ma uprawnienia **Zarządzanie rolami**.',
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+
+    if (botMember.roles.highest.comparePositionTo(role) <= 0) {
+      return interaction.reply({
+        content: `❌ Rola bota musi być wyżej niż ${role}. Poproś administratora o poprawienie kolejności ról.`,
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+
+    try {
+      const member = await interaction.guild.members.fetch(interaction.user.id);
+
+      if (member.roles.cache.has(role.id)) {
+        if (gc.verification.unverifiedRoleId) {
+          await member.roles.remove(gc.verification.unverifiedRoleId).catch(() => {});
+        }
+        return interaction.reply({
+          content: '✅ Jesteś już zweryfikowany/a!',
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+
+      await member.roles.add(role, 'FenixExelent: weryfikacja przyciskiem');
+
+      if (gc.verification.unverifiedRoleId) {
+        await member.roles.remove(
+          gc.verification.unverifiedRoleId,
+          'FenixExelent: użytkownik zweryfikowany'
+        ).catch(() => {});
+      }
+
+      return interaction.reply({
+        embeds: [embed(
+          '#2ed573',
+          '✅ Zweryfikowano!',
+          `Witaj na **${interaction.guild.name}**! Masz teraz pełny dostęp do serwera. 🔥`
+        )],
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (err) {
+      console.error('Verify error:', err);
+      return interaction.reply({
+        content: `❌ Nie udało się nadać roli. Sprawdź uprawnienia i kolejność ról bota. (${err.code || 'unknown'})`,
+        flags: MessageFlags.Ephemeral,
+      });
+    }
   }
 
   // ── Ticket Open ──
@@ -3965,6 +4029,13 @@ async function handleButton(interaction, gc) {
 
   // ── Ticket Close ──
   if (interaction.customId === 'ticket_close') {
+    const canClose =
+      interaction.member.permissions.has(PermissionFlagsBits.ManageChannels) ||
+      (gc.tickets.supportRoleId && interaction.member.roles.cache.has(gc.tickets.supportRoleId)) ||
+      Object.values(gc.tickets.openTickets).includes(interaction.channel.id);
+
+    if (!canClose) return interaction.reply({ content: '❌ Brak uprawnień do zamknięcia.', flags: MessageFlags.Ephemeral });
+
     const ownerId = Object.keys(gc.tickets.openTickets).find(k => gc.tickets.openTickets[k] === interaction.channel.id);
     if (ownerId) { delete gc.tickets.openTickets[ownerId]; saveConfig(); }
 
@@ -3981,6 +4052,11 @@ async function handleButton(interaction, gc) {
 
   // ── Ticket Claim ──
   if (interaction.customId === 'ticket_claim') {
+    const hasSupport = gc.tickets.supportRoleId && interaction.member.roles.cache.has(gc.tickets.supportRoleId);
+    const hasManage  = interaction.member.permissions.has(PermissionFlagsBits.ManageChannels);
+    if (!hasSupport && !hasManage) {
+      return interaction.reply({ content: '❌ Tylko support może przejąć ticket.', flags: MessageFlags.Ephemeral });
+    }
     const safeName = interaction.user.username.toLowerCase().replace(/\s+/g, '-');
     await interaction.channel.setName(`ticket-${safeName}-claimed`).catch(() => {});
     return interaction.reply({ embeds: [embed('#2ed573', '🙋 Ticket Przejęty', `Ticket został przejęty przez ${interaction.user}.`)] });
@@ -4172,106 +4248,86 @@ function startDashboard() {
   app.post('/api/config/:guildId', requireAuth, async (req, res) => {
     const { guildId } = req.params;
 
-    try {
-      if (!hasAdminOnGuild(req, guildId)) {
-        return res.status(403).json({ error: 'Brak uprawnień' });
-      }
+    if (!hasAdminOnGuild(req, guildId)) {
+      return res.status(403).json({ error: 'Brak uprawnień' });
+    }
 
-      const guild = client.guilds.cache.get(guildId);
-      if (!guild) {
-        return res.status(404).json({ error: 'Bot nie jest na tym serwerze' });
-      }
+    const guild = client.guilds.cache.get(guildId);
+    if (!guild) {
+      return res.status(404).json({ error: 'Bot nie jest na tym serwerze' });
+    }
 
-      if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
-        return res.status(400).json({ error: 'Nieprawidłowe dane JSON' });
-      }
+    const gc = getGuildConfig(guildId);
+    const allowed = [
+      'antispam',
+      'antiraid',
+      'antiscam',
+      'channelGuard',
+      'verification',
+      'tickets',
+      'modLog',
+      'antialt',
+      'emergency',
+      'securityIgnore',
+      'appeals',
+    ];
 
-      await guild.channels.fetch().catch(() => {});
-      await guild.roles.fetch().catch(() => {});
+    for (const key of allowed) {
+      if (req.body[key]) Object.assign(gc[key], req.body[key]);
+    }
 
-      const gc = getGuildConfig(guildId);
-      const allowed = [
-        'antispam', 'antiraid', 'antiscam', 'channelGuard',
-        'verification', 'tickets', 'modLog', 'antialt',
-        'emergency', 'securityIgnore', 'appeals',
-      ];
+    const actions = req.body.actions || {};
 
-      for (const key of allowed) {
-        const incoming = req.body[key];
-        if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) continue;
-        if (!gc[key] || typeof gc[key] !== 'object' || Array.isArray(gc[key])) gc[key] = {};
-        Object.assign(gc[key], incoming);
-      }
-
-      const actions = req.body.actions && typeof req.body.actions === 'object'
-        ? req.body.actions
-        : {};
-
-      if (req.body.antiraid?.lockdownActive !== undefined) {
-        const lockdownActive = Boolean(req.body.antiraid.lockdownActive);
-        let failed = 0;
-        for (const [, ch] of guild.channels.cache) {
-          if (ch.type !== ChannelType.GuildText) continue;
+    if (req.body.antiraid?.lockdownActive !== undefined) {
+      for (const [, ch] of guild.channels.cache) {
+        if (ch.type === ChannelType.GuildText) {
           await ch.permissionOverwrites.edit(guild.roles.everyone, {
-            SendMessages: lockdownActive ? false : null,
-          }).catch(err => {
-            failed++;
-            console.error(`Dashboard lockdown: nie udało się zmienić #${ch.name}:`, err.message);
-          });
-        }
-        if (failed) console.warn(`Dashboard lockdown: ${failed} kanałów nie zostało zaktualizowanych.`);
-      }
-
-      if (actions.sendVerificationPanel) {
-        const channelId = gc.verification?.channelId;
-        const ch = channelId ? await guild.channels.fetch(channelId).catch(() => null) : null;
-        if (!ch || !ch.isTextBased?.()) {
-          return res.status(400).json({ error: 'Wybierz prawidłowy kanał panelu weryfikacji' });
-        }
-        await sendVerifyPanel(ch);
-      }
-
-      if (actions.sendTicketPanel) {
-        const channelId = gc.tickets?.panelChannelId || gc.tickets?.logChannelId;
-        const ch = channelId ? await guild.channels.fetch(channelId).catch(() => null) : null;
-        if (!ch || !ch.isTextBased?.()) {
-          return res.status(400).json({ error: 'Wybierz prawidłowy kanał panelu ticketów' });
-        }
-        await sendTicketPanel(ch);
-      }
-
-      saveConfig();
-
-      const logChannelId =
-        gc.modLog?.channelId || gc.antiraid?.logChannel || gc.antispam?.logChannel ||
-        gc.antiscam?.logChannel || gc.channelGuard?.logChannel;
-
-      if (logChannelId) {
-        const logCh = await guild.channels.fetch(logChannelId).catch(() => null);
-        if (logCh?.isTextBased?.()) {
-          await logCh.send({
-            embeds: [embed(
-              '#2ed573',
-              '⚙️ Dashboard zaktualizowany',
-              'Ustawienia serwera zostały zmienione przez panel WWW.',
-              [
-                { name: 'AntiSpam', value: gc.antispam?.enabled ? '✅ Włączony' : '❌ Wyłączony', inline: true },
-                { name: 'AntiRaid', value: gc.antiraid?.enabled ? '✅ Włączony' : '❌ Wyłączony', inline: true },
-                { name: 'Channel Guard', value: gc.channelGuard?.blockNewChannels ? '✅ Aktywny' : '❌ Wyłączony', inline: true },
-              ]
-            )],
+            SendMessages: req.body.antiraid.lockdownActive ? false : null,
           }).catch(() => {});
         }
       }
-
-      return res.json({ success: true, config: gc });
-    } catch (err) {
-      console.error(`Dashboard config save error (${guildId}):`, err);
-      return res.status(500).json({
-        error: 'Nie udało się zapisać ustawień',
-        details: process.env.NODE_ENV === 'production' ? undefined : err.message,
-      });
     }
+
+    if (actions.sendVerificationPanel) {
+      const channelId = gc.verification.channelId;
+      const ch = channelId ? await guild.channels.fetch(channelId).catch(() => null) : null;
+      if (ch) await sendVerifyPanel(ch).catch(console.error);
+    }
+
+    if (actions.sendTicketPanel) {
+      const channelId = gc.tickets.panelChannelId || gc.tickets.logChannelId;
+      const ch = channelId ? await guild.channels.fetch(channelId).catch(() => null) : null;
+      if (ch) await sendTicketPanel(ch).catch(console.error);
+    }
+
+    saveConfig();
+
+    const logChannelId =
+      gc.modLog?.channelId ||
+      gc.antiraid?.logChannel ||
+      gc.antispam?.logChannel ||
+      gc.antiscam?.logChannel ||
+      gc.channelGuard?.logChannel;
+
+    if (logChannelId) {
+      const logCh = await guild.channels.fetch(logChannelId).catch(() => null);
+      if (logCh) {
+        await logCh.send({
+          embeds: [embed(
+            '#2ed573',
+            '⚙️ Dashboard zaktualizowany',
+            'Ustawienia serwera zostały zmienione przez panel WWW.',
+            [
+              { name: 'AntiSpam', value: gc.antispam.enabled ? '✅ Włączony' : '❌ Wyłączony', inline: true },
+              { name: 'AntiRaid', value: gc.antiraid.enabled ? '✅ Włączony' : '❌ Wyłączony', inline: true },
+              { name: 'Channel Guard', value: gc.channelGuard.blockNewChannels ? '✅ Aktywny' : '❌ Wyłączony', inline: true },
+            ]
+          )],
+        }).catch(() => {});
+      }
+    }
+
+    return res.json({ success: true, config: gc });
   });
 
   app.post('/api/mod/:guildId/warn', requireAuth, async (req, res) => {

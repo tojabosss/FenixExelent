@@ -175,20 +175,15 @@ const commands = [
     .addUserOption(o => o.setName('uzytkownik').setDescription('Użytkownik').setRequired(true)),
 
   new SlashCommandBuilder()
-    .setName('verify')
-    .setDescription('🛡️ Profesjonalny system weryfikacji v2')
+    .setName('verification')
+    .setDescription('✅ Zarządzaj weryfikacją')
     .addSubcommand(s => s
       .setName('setup')
-      .setDescription('Automatycznie skonfiguruj role, kanał i panel')
-      .addRoleOption(o => o.setName('member').setDescription('Rola nadawana po weryfikacji (domyślnie: Member)').setRequired(false))
-      .addRoleOption(o => o.setName('unverified').setDescription('Rola nadawana po wejściu (domyślnie: Niezweryfikowany)').setRequired(false))
-      .addChannelOption(o => o.setName('kanal').setDescription('Kanał panelu weryfikacji').setRequired(false))
-      .addChannelOption(o => o.setName('logi').setDescription('Kanał logów weryfikacji').setRequired(false)))
-    .addSubcommand(s => s.setName('panel').setDescription('Wyślij nowy panel').addChannelOption(o => o.setName('kanal').setDescription('Kanał panelu').setRequired(false)))
+      .setDescription('Ustaw rolę weryfikacji')
+      .addRoleOption(o => o.setName('rola').setDescription('Rola').setRequired(true)))
     .addSubcommand(s => s.setName('on').setDescription('Włącz weryfikację'))
     .addSubcommand(s => s.setName('off').setDescription('Wyłącz weryfikację'))
-    .addSubcommand(s => s.setName('status').setDescription('Pokaż konfigurację i statystyki'))
-    .addSubcommand(s => s.setName('sync').setDescription('Nadaj role Niezweryfikowany obecnym użytkownikom bez Member')),
+    .addSubcommand(s => s.setName('panel').setDescription('Wyślij panel weryfikacji')),
 
   new SlashCommandBuilder()
     .setName('ticket')
@@ -284,7 +279,7 @@ const rest = new REST({ version: '10' }).setToken(process.env.BOT_TOKEN);
 
 (async () => {
   const clientId = process.env.CLIENT_ID;
-  const guildId = process.env.DEPLOY_GUILD_ID || null;
+  const guildId = process.env.GUILD_ID;
 
   if (!process.env.BOT_TOKEN) {
     console.error('❌ Brak BOT_TOKEN w .env!');
@@ -304,13 +299,13 @@ const rest = new REST({ version: '10' }).setToken(process.env.BOT_TOKEN);
         Routes.applicationGuildCommands(clientId, guildId),
         { body: commands }
       );
-      console.log(`✅ Zarejestrowano ${commands.length} komend testowo na serwerze ${guildId}`);
+      console.log(`✅ Zarejestrowano ${commands.length} komend na serwerze ${guildId}`);
     } else {
       await rest.put(
         Routes.applicationCommands(clientId),
         { body: commands }
       );
-      console.log(`✅ Zarejestrowano ${commands.length} komend globalnie — będą dostępne na wszystkich serwerach bota`);
+      console.log(`✅ Zarejestrowano ${commands.length} komend globalnie`);
     }
 
     commands.forEach((cmd, i) => {

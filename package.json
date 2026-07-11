@@ -1,21 +1,19 @@
 {
-  "name": "fenixexelent",
-  "version": "2.1.0",
+  "name": "fenixexelent-security",
+  "version": "2.2.0",
+  "private": true,
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
     "deploy": "node deploy-commands.js",
-    "dev": "nodemon index.js"
+    "check": "node --check index.js && node --check deploy-commands.js"
   },
   "dependencies": {
-    "axios": "^1.6.8",
-    "discord.js": "^14.18.0",
-    "dotenv": "^16.4.5",
-    "express": "^4.19.2",
-    "express-session": "^1.18.0",
-    "tesseract.js": "^5.1.1"
-  },
-  "devDependencies": {
-    "nodemon": "^3.1.0"
+    "axios": "^1.7.9",
+    "discord.js": "^14.19.3",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-session": "^1.18.1",
+    "tesseract.js": "^6.0.1"
   }
 }
