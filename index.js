@@ -14,6 +14,7 @@ const {
   ButtonStyle,
   ChannelType,
   AuditLogEvent,
+  MessageFlags,
 } = require('discord.js');
 
 require('dotenv').config();
@@ -335,7 +336,7 @@ function isStaffMember(member, gc) {
 
 function requireSecurityPermission(interaction, gc) {
   if (isStaffMember(interaction.member, gc)) return null;
-  return interaction.reply({ content: '❌ Brak uprawnień do tej komendy.', ephemeral: true });
+  return interaction.reply({ content: '❌ Brak uprawnień do tej komendy.', flags: MessageFlags.Ephemeral });
 }
 
 function getAccountAgeDays(user) {
@@ -531,7 +532,7 @@ async function ensureVerificationForAntiAlt(guild, gc) {
   if (!verifiedRole) {
     verifiedRole = await guild.roles.create({
       name: 'Zweryfikowany',
-      color: '#22c55e',
+      colors: ('#22c55e') ? { primaryColor: ('#22c55e') } : undefined,
       reason: 'FenixExelent AntiAlt: automatyczny setup roli weryfikacji',
     }).catch(() => null);
     if (verifiedRole) createdSomething = true;
@@ -548,7 +549,7 @@ async function ensureVerificationForAntiAlt(guild, gc) {
   if (!unverifiedRole) {
     unverifiedRole = await guild.roles.create({
       name: 'Niezweryfikowany',
-      color: '#747d8c',
+      colors: ('#747d8c') ? { primaryColor: ('#747d8c') } : undefined,
       reason: 'FenixExelent AntiAlt: automatyczny setup roli przed weryfikacją',
     }).catch(() => null);
     if (unverifiedRole) createdSomething = true;
@@ -676,7 +677,7 @@ function getSupportLanguageDefinitions(gc) {
 async function getOrCreateRoleByName(guild, name, color, reason) {
   let role = guild.roles.cache.find(r => r.name.toLowerCase() === String(name).toLowerCase());
   if (!role) {
-    role = await guild.roles.create({ name, color, reason }).catch(() => null);
+    role = await guild.roles.create({ name, colors: color ? { primaryColor: color } : undefined, reason }).catch(() => null);
   }
   return role;
 }
@@ -721,11 +722,13 @@ async function sendSupportLanguagePanel(channel, gc = null) {
 
 async function setupSupportLanguageSystem(guild, gc) {
   const supportGuildId = getSupportGuildIdFromEnv();
-  if (!supportGuildId) {
-    return { ok: false, error: 'Brak SUPPORT_GUILD_ID w Render Environment.' };
+  const gamingGuildId = String(process.env.GAMING_SETUP_GUILD_ID || '1462330169669980244').trim();
+  const allowedGuildIds = [supportGuildId, gamingGuildId].filter(Boolean);
+  if (!allowedGuildIds.length) {
+    return { ok: false, error: 'Brak SUPPORT_GUILD_ID lub GAMING_SETUP_GUILD_ID w Render Environment.' };
   }
-  if (guild.id !== supportGuildId) {
-    return { ok: false, error: 'Ta komenda może działać tylko na Twoim support serwerze.' };
+  if (!allowedGuildIds.includes(guild.id)) {
+    return { ok: false, error: 'Ta konfiguracja działa tylko na Twoim support lub gaming serwerze.' };
   }
 
   const cfg = ensureSupportLanguagesConfig(gc);
@@ -821,20 +824,20 @@ async function setupSupportLanguageSystem(guild, gc) {
 async function handleSupportLanguageButton(interaction, gc) {
   const cfg = ensureSupportLanguagesConfig(gc);
   if (!cfg.enabled) {
-    return interaction.reply({ content: '❌ Wybór języka jest aktualnie wyłączony.', ephemeral: true });
+    return interaction.reply({ content: '❌ Wybór języka jest aktualnie wyłączony.', flags: MessageFlags.Ephemeral });
   }
   if (!isConfiguredSupportGuild(interaction.guild)) {
-    return interaction.reply({ content: '❌ Ten panel działa tylko na oficjalnym support serwerze.', ephemeral: true });
+    return interaction.reply({ content: '❌ Ten panel działa tylko na oficjalnym support serwerze.', flags: MessageFlags.Ephemeral });
   }
 
   const langCode = interaction.customId.split(':')[1];
   const lang = SUPPORT_LANGUAGE_DEFINITIONS.find(item => item.code === langCode);
   if (!lang || !cfg.roleIds?.[langCode]) {
-    return interaction.reply({ content: '❌ Ten język nie jest skonfigurowany. Użyj `/supportlang setup`.', ephemeral: true });
+    return interaction.reply({ content: '❌ Ten język nie jest skonfigurowany. Użyj `/supportlang setup`.', flags: MessageFlags.Ephemeral });
   }
 
   const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
-  if (!member) return interaction.reply({ content: '❌ Nie mogę pobrać Twojego profilu.', ephemeral: true });
+  if (!member) return interaction.reply({ content: '❌ Nie mogę pobrać Twojego profilu.', flags: MessageFlags.Ephemeral });
 
   const allLangRoleIds = Object.values(cfg.roleIds || {}).filter(Boolean);
   const rolesToRemove = allLangRoleIds.filter(roleId => roleId !== cfg.roleIds[langCode] && member.roles.cache.has(roleId));
@@ -853,7 +856,7 @@ async function handleSupportLanguageButton(interaction, gc) {
       `Wybrano: **${lang.label}**
 ${channelId ? `Twój kanał: <#${channelId}>` : 'Kanał językowy zostanie odblokowany, jeśli jest skonfigurowany.'}`
     )],
-    ephemeral: true,
+    flags: MessageFlags.Ephemeral,
   });
 }
 
@@ -1004,7 +1007,7 @@ async function restoreServerBackup(guild, gc, backupId) {
     if (!guild.roles.cache.find(role => role.name === r.name)) {
       await guild.roles.create({
         name: r.name,
-        color: /^#[0-9a-f]{6}$/i.test(r.color || '') ? r.color : undefined,
+        colors: (/^#[0-9a-f]{6}$/i.test(r.color || '') ? r.color : undefined) ? { primaryColor: (/^#[0-9a-f]{6}$/i.test(r.color || '') ? r.color : undefined) } : undefined,
         hoist: !!r.hoist,
         mentionable: !!r.mentionable,
         permissions: BigInt(r.permissions || '0'),
@@ -1163,7 +1166,7 @@ async function createPrivateRole(guild, name, color, options = {}) {
   if (!role) {
     role = await guild.roles.create({
       name,
-      color: color || undefined,
+      colors: (color || undefined) ? { primaryColor: (color || undefined) } : undefined,
       hoist: !!options.hoist,
       mentionable: !!options.mentionable,
       permissions: options.permissions || undefined,
@@ -1548,6 +1551,51 @@ setInterval(() => {
   client.guilds.cache.forEach(g => updateStats(g).catch(() => {}));
 }, 10 * 60 * 1000);
 
+
+// ─── GAMING LANGUAGE PANEL — TEXT COMMAND ─────────────────────────────────
+// Nie wymaga deploy-commands.js. Działa na support/gaming serwerze.
+client.on('messageCreate', async (message) => {
+  if (!message.guild || message.author.bot) return;
+  const command = String(message.content || '').trim().toLowerCase();
+  if (!['!language setup', '!language panel', '!language status', '!language off'].includes(command)) return;
+
+  const allowed = message.guild.ownerId === message.author.id ||
+    message.member?.permissions.has(PermissionFlagsBits.Administrator) ||
+    message.member?.permissions.has(PermissionFlagsBits.ManageGuild);
+  if (!allowed) return message.reply('❌ Tej komendy może użyć tylko właściciel lub administrator.').catch(() => {});
+
+  if (!isConfiguredSupportGuild(message.guild)) {
+    return message.reply('❌ Ten panel działa tylko na skonfigurowanym serwerze support/gaming. Sprawdź GAMING_SETUP_GUILD_ID.').catch(() => {});
+  }
+
+  const gc = getGuildConfig(message.guild.id);
+  const cfg = ensureSupportLanguagesConfig(gc);
+
+  if (command === '!language setup') {
+    const result = await setupSupportLanguageSystem(message.guild, gc);
+    if (!result.ok) return message.reply(`❌ ${result.error}`).catch(() => {});
+    return message.reply(`✅ Wybór języka gotowy. Panel: ${result.verifyChannel ? `<#${result.verifyChannel.id}>` : 'kanał weryfikacji'}.`).catch(() => {});
+  }
+
+  if (command === '!language panel') {
+    const target = (cfg.verifyChannelId && message.guild.channels.cache.get(cfg.verifyChannelId)) || message.channel;
+    await sendSupportLanguagePanel(target, gc).catch(() => null);
+    return message.reply(`✅ Panel weryfikacji i wyboru języka wysłany na <#${target.id}>.`).catch(() => {});
+  }
+
+  if (command === '!language status') {
+    return message.reply(
+      `**Wybór języka:** ${cfg.enabled ? '✅ Włączony' : '❌ Wyłączony'}\n` +
+      `**Języki:** ${(cfg.supported || []).join(', ')}\n` +
+      `**Kanał:** ${cfg.verifyChannelId ? `<#${cfg.verifyChannelId}>` : 'brak'}`
+    ).catch(() => {});
+  }
+
+  cfg.enabled = false;
+  saveConfig();
+  return message.reply('✅ Wybór języka wyłączony. Role i kanały pozostają bez zmian.').catch(() => {});
+});
+
 // ─── REACTION ROLES: STEAM + PLATFORMA ───────────────────────────────────
 const REACTION_ROLE_DEFINITIONS = [
   { emoji: '🖥️', name: 'PC', color: '#5865F2', group: 'Platforma' },
@@ -1622,7 +1670,7 @@ async function createReactionRolesPanel(message) {
     if (!role) {
       role = await guild.roles.create({
         name: def.name,
-        color: def.color,
+        colors: (def.color) ? { primaryColor: (def.color) } : undefined,
         mentionable: false,
         reason: `FenixExelent reaction roles: ${def.name}`,
       }).catch(() => null);
@@ -1788,7 +1836,7 @@ function updateBotPresence() {
   console.log(`🔄 Status bota zaktualizowany: ${guildCount} serwerów`);
 }
 
-client.once('ready', async () => {
+client.once('clientReady', async () => {
   console.log(`🔥 FenixExelent online jako ${client.user.tag}`);
   console.log(`📊 Serwery: ${client.guilds.cache.size}`);
 
@@ -2627,7 +2675,7 @@ client.on('channelCreate', async (channel) => {
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
   if (!interaction.guild) {
-    return interaction.reply({ content: '❌ Tej komendy można używać tylko na serwerze.', ephemeral: true });
+    return interaction.reply({ content: '❌ Tej komendy można używać tylko na serwerze.', flags: MessageFlags.Ephemeral });
   }
 
   const SUPPORT_GUILD_ID = process.env.SUPPORT_GUILD_ID || '1492793536930910310';
@@ -2639,7 +2687,7 @@ client.on('interactionCreate', async (interaction) => {
   ) {
     return interaction.reply({
       content: '❌ Na oficjalnym serwerze supportowym tylko właściciel bota może używać komend.',
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   }
 
@@ -2650,7 +2698,7 @@ client.on('interactionCreate', async (interaction) => {
     await handleCommand(interaction, gc, commandName);
   } catch (err) {
     console.error(`Błąd komendy ${commandName}:`, err);
-    const errMsg = { embeds: [embed('#ff4757', '❌ Błąd', 'Wystąpił nieoczekiwany błąd. Spróbuj ponownie.')], ephemeral: true };
+    const errMsg = { embeds: [embed('#ff4757', '❌ Błąd', 'Wystąpił nieoczekiwany błąd. Spróbuj ponownie.')], flags: MessageFlags.Ephemeral };
     if (interaction.deferred)       await interaction.editReply(errMsg).catch(() => {});
     else if (!interaction.replied)  await interaction.reply(errMsg).catch(() => {});
   
@@ -2680,7 +2728,7 @@ if (commandName === 'help') {
         .setFooter({ text: 'FenixExelent 🔥 | Wszystkie komendy' })
         .setTimestamp()
       ],
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
@@ -2689,11 +2737,11 @@ if (commandName === 'help') {
     const sub = interaction.options.getSubcommand();
 
     if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      return interaction.reply({ content: '❌ Tylko administrator może konfigurować języki supportu.', ephemeral: true });
+      return interaction.reply({ content: '❌ Tylko administrator może konfigurować języki supportu.', flags: MessageFlags.Ephemeral });
     }
 
     if (sub === 'setup') {
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       const result = await setupSupportLanguageSystem(interaction.guild, gc);
       if (!result.ok) {
         return interaction.editReply({ embeds: [embed('#ff4757', '❌ Support Language Setup', result.error || 'Nie udało się skonfigurować języków.')] });
@@ -2718,9 +2766,9 @@ if (commandName === 'help') {
       const targetChannel = cfg.verifyChannelId
         ? await interaction.guild.channels.fetch(cfg.verifyChannelId).catch(() => null)
         : interaction.channel;
-      if (!targetChannel) return interaction.reply({ content: '❌ Nie znaleziono kanału panelu.', ephemeral: true });
+      if (!targetChannel) return interaction.reply({ content: '❌ Nie znaleziono kanału panelu.', flags: MessageFlags.Ephemeral });
       await sendSupportLanguagePanel(targetChannel, gc);
-      return interaction.reply({ embeds: [embed('#2ed573', '✅ Panel wysłany', `Panel wyboru języka wysłany na <#${targetChannel.id}>.`)], ephemeral: true });
+      return interaction.reply({ embeds: [embed('#2ed573', '✅ Panel wysłany', `Panel wyboru języka wysłany na <#${targetChannel.id}>.`)], flags: MessageFlags.Ephemeral });
     }
 
     if (sub === 'status') {
@@ -2736,7 +2784,7 @@ if (commandName === 'help') {
             { name: 'Kanały', value: Object.entries(cfg.channelIds || {}).map(([code, id]) => `${code.toUpperCase()}: <#${id}>`).join('\\n') || 'Brak', inline: false },
           ]
         )],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
@@ -2744,7 +2792,7 @@ if (commandName === 'help') {
       const cfg = ensureSupportLanguagesConfig(gc);
       cfg.enabled = false;
       saveConfig();
-      return interaction.reply({ embeds: [embed('#ff4757', '❌ Support language wyłączony', 'Role i kanały nie zostały usunięte, ale przyciski wyboru języka przestaną działać.')], ephemeral: true });
+      return interaction.reply({ embeds: [embed('#ff4757', '❌ Support language wyłączony', 'Role i kanały nie zostały usunięte, ale przyciski wyboru języka przestaną działać.')], flags: MessageFlags.Ephemeral });
     }
   }
 
@@ -2766,7 +2814,7 @@ if (commandName === 'help') {
         `Panel webowy dostępny pod adresem:\n${config.dashboardUrl}\n\nZaloguj się przez Discord aby zarządzać ustawieniami serwera.`
       )],
       components: [row],
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
@@ -2900,13 +2948,13 @@ if (commandName === 'help') {
             inline: true },
         ]
       )],
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
   // ── stats ─────────────────────────────────────────────────────────────
   if (commandName === 'stats') {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     await updateStats(interaction.guild);
     return interaction.editReply({ embeds: [embed('#2ed573', '✅ Statystyki odświeżone', 'Kanały statystyk zostały zaktualizowane.')] });
   }
@@ -2920,7 +2968,7 @@ if (commandName === 'help') {
     if (!gc.antialt) gc.antialt = { enabled: false, minAccountAgeDays: 7, action: 'verify', logChannel: null, riskPoints: 20 };
 
     if (sub === 'on') {
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
       const setup = await ensureVerificationForAntiAlt(interaction.guild, gc);
       gc.antialt.enabled = true;
@@ -2944,7 +2992,7 @@ if (commandName === 'help') {
     if (sub === 'off') {
       gc.antialt.enabled = false;
       saveConfig();
-      return interaction.reply({ embeds: [embed('#ff4757', '❌ AntiAlt wyłączony', 'Ochrona przed świeżymi kontami została wyłączona.')], ephemeral: true });
+      return interaction.reply({ embeds: [embed('#ff4757', '❌ AntiAlt wyłączony', 'Ochrona przed świeżymi kontami została wyłączona.')], flags: MessageFlags.Ephemeral });
     }
 
     if (sub === 'set') {
@@ -2953,7 +3001,7 @@ if (commandName === 'help') {
       if (days !== null) gc.antialt.minAccountAgeDays = days;
       if (log) gc.antialt.logChannel = log.id;
       saveConfig();
-      return interaction.reply({ embeds: [embed('#2ed573', '✅ AntiAlt zaktualizowany', `Minimum wieku konta: **${gc.antialt.minAccountAgeDays} dni**${gc.antialt.logChannel ? `\nLogi: <#${gc.antialt.logChannel}>` : ''}`)], ephemeral: true });
+      return interaction.reply({ embeds: [embed('#2ed573', '✅ AntiAlt zaktualizowany', `Minimum wieku konta: **${gc.antialt.minAccountAgeDays} dni**${gc.antialt.logChannel ? `\nLogi: <#${gc.antialt.logChannel}>` : ''}`)], flags: MessageFlags.Ephemeral });
     }
 
     if (sub === 'status') {
@@ -2962,7 +3010,7 @@ if (commandName === 'help') {
         { name: 'Min wiek konta', value: `${gc.antialt.minAccountAgeDays || 7} dni`, inline: true },
         { name: 'Risk +', value: `${gc.antialt.riskPoints || 20}`, inline: true },
         { name: 'Logi', value: gc.antialt.logChannel ? `<#${gc.antialt.logChannel}>` : 'Auto', inline: true },
-      ])], ephemeral: true });
+      ])], flags: MessageFlags.Ephemeral });
     }
   }
 
@@ -2987,7 +3035,7 @@ if (commandName === 'help') {
         { name: 'Aktualizacja', value: data.updatedAt ? new Date(data.updatedAt).toLocaleString('pl-PL') : 'Brak', inline: true },
         { name: 'Ostatnie zdarzenia', value: events.slice(0, 1000), inline: false },
       ]
-    )], ephemeral: true });
+    )], flags: MessageFlags.Ephemeral });
   }
 
   // ── reportscam ───────────────────────────────────────────────────────
@@ -2997,7 +3045,7 @@ if (commandName === 'help') {
     const opis = interaction.options.getString('opis') || 'Brak opisu';
 
     if (!link && !user) {
-      return interaction.reply({ content: '❌ Podaj link/domenę albo użytkownika do zgłoszenia.', ephemeral: true });
+      return interaction.reply({ content: '❌ Podaj link/domenę albo użytkownika do zgłoszenia.', flags: MessageFlags.Ephemeral });
     }
 
     const reportId = makeReportId();
@@ -3037,7 +3085,7 @@ if (commandName === 'help') {
       components: buildScamReportButtons(reportId),
     }).catch(() => null);
 
-    return interaction.reply({ content: msg ? `✅ Zgłoszenie scam wysłane do ${logChannel}.` : '✅ Zgłoszenie zapisane, ale nie udało się wysłać na kanał logów.', ephemeral: true });
+    return interaction.reply({ content: msg ? `✅ Zgłoszenie scam wysłane do ${logChannel}.` : '✅ Zgłoszenie zapisane, ale nie udało się wysłać na kanał logów.', flags: MessageFlags.Ephemeral });
   }
 
   // ── securitystats ────────────────────────────────────────────────────
@@ -3050,7 +3098,7 @@ if (commandName === 'help') {
       { name: 'Nowe konta AntiAlt', value: `${stats.altDetections || 0}`, inline: true },
       { name: 'Zgłoszenia scam', value: `${stats.reportsCreated || 0}`, inline: true },
       { name: 'Emergency aktywacje', value: `${stats.emergencyActivations || 0}`, inline: true },
-    ])], ephemeral: true });
+    ])], flags: MessageFlags.Ephemeral });
   }
 
 
@@ -3061,7 +3109,7 @@ if (commandName === 'help') {
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setLabel(labels[commandName]).setStyle(ButtonStyle.Link).setURL(url).setEmoji('🌐')
     );
-    return interaction.reply({ embeds: [embed('#ff6b00', `🌐 ${labels[commandName]}`, `Otwórz stronę: ${url}`)], components: [row], ephemeral: true });
+    return interaction.reply({ embeds: [embed('#ff6b00', `🌐 ${labels[commandName]}`, `Otwórz stronę: ${url}`)], components: [row], flags: MessageFlags.Ephemeral });
   }
 
   // ── servercheck ──────────────────────────────────────────────────────
@@ -3074,7 +3122,7 @@ if (commandName === 'help') {
       `🧪 Server Security Score — ${result.score}/100`,
       result.score >= 85 ? 'Serwer wygląda bardzo dobrze zabezpieczony.' : 'Poniżej masz rzeczy do poprawienia.',
       [{ name: 'Checklist', value: lines.slice(0, 1000), inline: false }]
-    )], ephemeral: true });
+    )], flags: MessageFlags.Ephemeral });
   }
 
   // ── securityignore ───────────────────────────────────────────────────
@@ -3089,25 +3137,25 @@ if (commandName === 'help') {
       const channel = interaction.options.getChannel('kanal');
       if (!ignore.channels.includes(channel.id)) ignore.channels.push(channel.id);
       saveConfig();
-      return interaction.reply({ content: `✅ Kanał <#${channel.id}> będzie ignorowany przez automatyczne zabezpieczenia.`, ephemeral: true });
+      return interaction.reply({ content: `✅ Kanał <#${channel.id}> będzie ignorowany przez automatyczne zabezpieczenia.`, flags: MessageFlags.Ephemeral });
     }
     if (sub === 'role') {
       const role = interaction.options.getRole('rola');
       if (!ignore.roles.includes(role.id)) ignore.roles.push(role.id);
       saveConfig();
-      return interaction.reply({ content: `✅ Rola <@&${role.id}> będzie ignorowana przez automatyczne zabezpieczenia.`, ephemeral: true });
+      return interaction.reply({ content: `✅ Rola <@&${role.id}> będzie ignorowana przez automatyczne zabezpieczenia.`, flags: MessageFlags.Ephemeral });
     }
     if (sub === 'removechannel') {
       const channel = interaction.options.getChannel('kanal');
       ignore.channels = ignore.channels.filter(id => id !== channel.id);
       saveConfig();
-      return interaction.reply({ content: `🗑️ Usunięto kanał <#${channel.id}> z ignorowanych.`, ephemeral: true });
+      return interaction.reply({ content: `🗑️ Usunięto kanał <#${channel.id}> z ignorowanych.`, flags: MessageFlags.Ephemeral });
     }
     if (sub === 'removerole') {
       const role = interaction.options.getRole('rola');
       ignore.roles = ignore.roles.filter(id => id !== role.id);
       saveConfig();
-      return interaction.reply({ content: `🗑️ Usunięto rolę <@&${role.id}> z ignorowanych.`, ephemeral: true });
+      return interaction.reply({ content: `🗑️ Usunięto rolę <@&${role.id}> z ignorowanych.`, flags: MessageFlags.Ephemeral });
     }
     if (sub === 'list') {
       const channels = ignore.channels.length ? ignore.channels.map(id => `<#${id}>`).join('\n') : 'Brak';
@@ -3115,20 +3163,20 @@ if (commandName === 'help') {
       return interaction.reply({ embeds: [embed('#ff6b00', '🧾 Ignorowane kanały/role', 'Te miejsca nie są karane przez automatyczne filtry.', [
         { name: 'Kanały', value: channels.slice(0, 1000), inline: true },
         { name: 'Role', value: roles.slice(0, 1000), inline: true },
-      ])], ephemeral: true });
+      ])], flags: MessageFlags.Ephemeral });
     }
   }
 
   // ── backup ───────────────────────────────────────────────────────────
   if (commandName === 'backup') {
     if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      return interaction.reply({ content: '❌ Tylko administrator może używać backupów.', ephemeral: true });
+      return interaction.reply({ content: '❌ Tylko administrator może używać backupów.', flags: MessageFlags.Ephemeral });
     }
     const sub = interaction.options.getSubcommand();
     if (!gc.backups) gc.backups = {};
 
     if (sub === 'create') {
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       const backup = createServerBackup(interaction.guild, gc);
       return interaction.editReply({ embeds: [embed('#2ed573', '✅ Backup utworzony', `ID backupu: \`${backup.id}\``, [
         { name: 'Role', value: `${backup.roles.length}`, inline: true },
@@ -3138,10 +3186,10 @@ if (commandName === 'help') {
     if (sub === 'list') {
       const list = Object.values(gc.backups).sort((a,b) => String(b.createdAt).localeCompare(String(a.createdAt)));
       const value = list.length ? list.slice(0, 10).map(b => `• \`${b.id}\` — ${new Date(b.createdAt).toLocaleString('pl-PL')} — ${b.channels?.length || 0} kanałów`).join('\n') : 'Brak backupów.';
-      return interaction.reply({ embeds: [embed('#ff6b00', '📦 Backupy serwera', value)], ephemeral: true });
+      return interaction.reply({ embeds: [embed('#ff6b00', '📦 Backupy serwera', value)], flags: MessageFlags.Ephemeral });
     }
     if (sub === 'restore') {
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       const id = interaction.options.getString('id');
       const result = await restoreServerBackup(interaction.guild, gc, id);
       if (!result) return interaction.editReply({ content: '❌ Nie znaleziono backupu o tym ID.' });
@@ -3166,11 +3214,11 @@ if (commandName === 'help') {
       appeals.enabled = true;
       appeals.channelId = channel.id;
       saveConfig();
-      return interaction.reply({ content: `✅ Kanał appeali ustawiony: <#${channel.id}>`, ephemeral: true });
+      return interaction.reply({ content: `✅ Kanał appeali ustawiony: <#${channel.id}>`, flags: MessageFlags.Ephemeral });
     }
 
     if (sub === 'submit') {
-      if (!appeals.enabled) return interaction.reply({ content: '❌ System appeal jest wyłączony.', ephemeral: true });
+      if (!appeals.enabled) return interaction.reply({ content: '❌ System appeal jest wyłączony.', flags: MessageFlags.Ephemeral });
       const reason = interaction.options.getString('powod');
       const appealId = makeAppealId();
       appeals.cases[appealId] = {
@@ -3191,7 +3239,7 @@ if (commandName === 'help') {
           { name: 'Powód', value: reason.slice(0, 1000), inline: false },
         ])], components: buildAppealButtons(appealId) }).catch(() => {});
       }
-      return interaction.reply({ content: `✅ Odwołanie wysłane. ID: \`${appealId}\``, ephemeral: true });
+      return interaction.reply({ content: `✅ Odwołanie wysłane. ID: \`${appealId}\``, flags: MessageFlags.Ephemeral });
     }
 
     if (sub === 'review') {
@@ -3199,19 +3247,19 @@ if (commandName === 'help') {
       if (perm) return perm;
       const id = interaction.options.getString('id');
       const a = appeals.cases[id];
-      if (!a) return interaction.reply({ content: '❌ Nie znaleziono appeala.', ephemeral: true });
+      if (!a) return interaction.reply({ content: '❌ Nie znaleziono appeala.', flags: MessageFlags.Ephemeral });
       return interaction.reply({ embeds: [embed('#ff6b00', `📝 Appeal ${id}`, `Status: **${a.status}**`, [
         { name: 'Użytkownik', value: `<@${a.userId}>`, inline: true },
         { name: 'Data', value: new Date(a.createdAt).toLocaleString('pl-PL'), inline: true },
         { name: 'Powód', value: a.reason.slice(0, 1000), inline: false },
-      ])], ephemeral: true });
+      ])], flags: MessageFlags.Ephemeral });
     }
   }
 
   // ── emergency ────────────────────────────────────────────────────────
   if (commandName === 'emergency') {
     if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      return interaction.reply({ content: '❌ Tylko administrator może użyć Emergency Mode.', ephemeral: true });
+      return interaction.reply({ content: '❌ Tylko administrator może użyć Emergency Mode.', flags: MessageFlags.Ephemeral });
     }
 
     const sub = interaction.options.getSubcommand();
@@ -3252,7 +3300,7 @@ if (commandName === 'help') {
           { name: 'AntiScam', value: gc.antiscam.enabled ? '✅' : '❌', inline: true },
           { name: 'Lockdown', value: gc.antiraid.lockdownActive ? '🔒 Tak' : '🔓 Nie', inline: true },
         ]
-      )], ephemeral: true });
+      )], flags: MessageFlags.Ephemeral });
     }
   }
 
@@ -3263,11 +3311,11 @@ if (commandName === 'help') {
     if (interaction.user.id !== OWNER_ID) {
       return interaction.reply({
         content: '❌ Tylko właściciel bota może użyć tej komendy.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     let refreshed = 0;
     let failed = 0;
@@ -3318,7 +3366,7 @@ if (commandName === 'help') {
     if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
       return interaction.reply({
         content: '❌ Potrzebujesz uprawnienia Zarządzanie serwerem, aby zmieniać OCR AntiScam.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
@@ -3329,13 +3377,13 @@ if (commandName === 'help') {
       gc.antiscam.blockScamImages = true;
       gc.antiscam.ocrScamImages = true;
       saveConfig();
-      return interaction.reply({ embeds: [embed('#2ed573', '✅ OCR AntiScam włączony', 'Bot będzie czytał tekst ze screenów i blokował obrazy scam/crypto/casino.')], ephemeral: true });
+      return interaction.reply({ embeds: [embed('#2ed573', '✅ OCR AntiScam włączony', 'Bot będzie czytał tekst ze screenów i blokował obrazy scam/crypto/casino.')], flags: MessageFlags.Ephemeral });
     }
 
     if (sub === 'off') {
       gc.antiscam.ocrScamImages = false;
       saveConfig();
-      return interaction.reply({ embeds: [embed('#ff4757', '❌ OCR AntiScam wyłączony', 'Bot nadal blokuje domeny/linki, ale nie czyta tekstu ze screenów.')], ephemeral: true });
+      return interaction.reply({ embeds: [embed('#ff4757', '❌ OCR AntiScam wyłączony', 'Bot nadal blokuje domeny/linki, ale nie czyta tekstu ze screenów.')], flags: MessageFlags.Ephemeral });
     }
 
     if (sub === 'strict') {
@@ -3348,7 +3396,7 @@ if (commandName === 'help') {
         aktywny
           ? 'Bot będzie blokował też same obrazki bez tekstu poza kanałami zgłoszeń scam.'
           : 'Bot będzie karał obrazki głównie wtedy, gdy OCR lub opis wykryje scam.'
-      )], ephemeral: true });
+      )], flags: MessageFlags.Ephemeral });
     }
 
     if (sub === 'status') {
@@ -3364,7 +3412,7 @@ if (commandName === 'help') {
           { name: 'Timeout', value: `${gc.antiscam.ocrTimeoutMs || 25000} ms`, inline: true },
           { name: 'Tesseract', value: Tesseract ? '✅ Załadowany' : '❌ Brak paczki', inline: true },
         ]
-      )], ephemeral: true });
+      )], flags: MessageFlags.Ephemeral });
     }
   }
 
@@ -3373,26 +3421,26 @@ if (commandName === 'help') {
     const ch = interaction.options.getChannel('kanal');
     gc.modLog.channelId = ch.id;
     saveConfig();
-    return interaction.reply({ embeds: [embed('#2ed573', '✅ Mod Log ustawiony', `Logi moderacji → <#${ch.id}>`)], ephemeral: true });
+    return interaction.reply({ embeds: [embed('#2ed573', '✅ Mod Log ustawiony', `Logi moderacji → <#${ch.id}>`)], flags: MessageFlags.Ephemeral });
   }
 
   // ── antispam ──────────────────────────────────────────────────────────
   if (commandName === 'antispam') {
     const sub = interaction.options.getSubcommand();
-    if (sub === 'on')  { gc.antispam.enabled = true;  saveConfig(); return interaction.reply({ embeds: [embed('#2ed573', '✅ AntiSpam włączony',  'Ochrona aktywna.')],    ephemeral: true }); }
-    if (sub === 'off') { gc.antispam.enabled = false; saveConfig(); return interaction.reply({ embeds: [embed('#ff4757', '❌ AntiSpam wyłączony', 'Ochrona wyłączona.')], ephemeral: true }); }
+    if (sub === 'on')  { gc.antispam.enabled = true;  saveConfig(); return interaction.reply({ embeds: [embed('#2ed573', '✅ AntiSpam włączony',  'Ochrona aktywna.')],    flags: MessageFlags.Ephemeral }); }
+    if (sub === 'off') { gc.antispam.enabled = false; saveConfig(); return interaction.reply({ embeds: [embed('#ff4757', '❌ AntiSpam wyłączony', 'Ochrona wyłączona.')], flags: MessageFlags.Ephemeral }); }
     if (sub === 'set') {
       gc.antispam.maxMessages = interaction.options.getInteger('wiadomosci');
       gc.antispam.interval    = interaction.options.getInteger('czas') * 1000;
       const mute = interaction.options.getInteger('mute');
       if (mute) gc.antispam.muteMinutes = mute;
       saveConfig();
-      return interaction.reply({ embeds: [embed('#2ed573', '✅ AntiSpam zaktualizowany', `Limit: ${gc.antispam.maxMessages} msg / ${gc.antispam.interval / 1000}s, mute: ${gc.antispam.muteMinutes} min`)], ephemeral: true });
+      return interaction.reply({ embeds: [embed('#2ed573', '✅ AntiSpam zaktualizowany', `Limit: ${gc.antispam.maxMessages} msg / ${gc.antispam.interval / 1000}s, mute: ${gc.antispam.muteMinutes} min`)], flags: MessageFlags.Ephemeral });
     }
     if (sub === 'log') {
       gc.antispam.logChannel = interaction.options.getChannel('kanal').id;
       saveConfig();
-      return interaction.reply({ embeds: [embed('#2ed573', '✅ Logi ustawione', `AntiSpam → <#${gc.antispam.logChannel}>`)], ephemeral: true });
+      return interaction.reply({ embeds: [embed('#2ed573', '✅ Logi ustawione', `AntiSpam → <#${gc.antispam.logChannel}>`)], flags: MessageFlags.Ephemeral });
     }
   }
   // ── antiscam ──────────────────────────────────────────────────────────
@@ -3425,7 +3473,7 @@ if (commandName === 'help') {
       saveConfig();
       return interaction.reply({
         embeds: [embed('#2ed573', '✅ AntiScam włączony', 'Ochrona przed scam linkami jest aktywna.')],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
@@ -3434,7 +3482,7 @@ if (commandName === 'help') {
       saveConfig();
       return interaction.reply({
         embeds: [embed('#ff4757', '❌ AntiScam wyłączony', 'Ochrona przed scam linkami została wyłączona.')],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
@@ -3453,7 +3501,7 @@ if (commandName === 'help') {
           '✅ AntiScam zaktualizowany',
           `Mute: **${gc.antiscam.muteMinutes || 60} min**\nUsuwanie wiadomości: **${gc.antiscam.deleteMessage ? 'Tak' : 'Nie'}**`
         )],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
@@ -3482,7 +3530,7 @@ if (commandName === 'help') {
             ? domains.map(d => `• \`${d}\``).join('\n')
             : 'Nie dodano nowej domeny. Ta domena mogła już być na whitelist.'
         )],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
@@ -3493,7 +3541,7 @@ if (commandName === 'help') {
 
       return interaction.reply({
         embeds: [embed('#2ed573', '✅ Logi AntiScam ustawione', `Kanał logów → <#${ch.id}>`)],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
   }
@@ -3541,7 +3589,7 @@ if (commandName === 'scamdomains') {
         '✅ Domeny dodane',
         `Dodano **${added}** nowych domen do bazy scam domen.\n\n${preview}${addedDomains.length > 25 ? '\n...i więcej' : ''}`
       )],
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
@@ -3553,7 +3601,7 @@ if (commandName === 'scamdomains') {
 
     return interaction.reply({
       embeds: [embed('#ff4757', '🗑️ Domena usunięta', `\`${domain}\` usunięto z bazy scam domen.`)],
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
@@ -3567,7 +3615,7 @@ if (commandName === 'scamdomains') {
 
     return interaction.reply({
       embeds: [embed('#ff6b00', '🌐 Scam domeny', list)],
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 }
@@ -3575,15 +3623,15 @@ if (commandName === 'scamdomains') {
 // ── antiraid ──────────────────────────────────────────────────────────
 if (commandName === 'antiraid') {
     const sub = interaction.options.getSubcommand();
-    if (sub === 'on')  { gc.antiraid.enabled = true;  saveConfig(); return interaction.reply({ embeds: [embed('#2ed573', '✅ AntiRaid włączony',  'Ochrona aktywna.')],    ephemeral: true }); }
-    if (sub === 'off') { gc.antiraid.enabled = false; saveConfig(); return interaction.reply({ embeds: [embed('#ff4757', '❌ AntiRaid wyłączony', 'Ochrona wyłączona.')], ephemeral: true }); }
+    if (sub === 'on')  { gc.antiraid.enabled = true;  saveConfig(); return interaction.reply({ embeds: [embed('#2ed573', '✅ AntiRaid włączony',  'Ochrona aktywna.')],    flags: MessageFlags.Ephemeral }); }
+    if (sub === 'off') { gc.antiraid.enabled = false; saveConfig(); return interaction.reply({ embeds: [embed('#ff4757', '❌ AntiRaid wyłączony', 'Ochrona wyłączona.')], flags: MessageFlags.Ephemeral }); }
     if (sub === 'set') {
       gc.antiraid.joinThreshold = interaction.options.getInteger('dolaczenia');
       gc.antiraid.joinInterval  = interaction.options.getInteger('czas') * 1000;
       const akcja = interaction.options.getString('akcja');
       if (akcja) gc.antiraid.action = akcja;
       saveConfig();
-      return interaction.reply({ embeds: [embed('#2ed573', '✅ AntiRaid zaktualizowany', `Próg: ${gc.antiraid.joinThreshold} / ${gc.antiraid.joinInterval / 1000}s, akcja: ${gc.antiraid.action.toUpperCase()}`)], ephemeral: true });
+      return interaction.reply({ embeds: [embed('#2ed573', '✅ AntiRaid zaktualizowany', `Próg: ${gc.antiraid.joinThreshold} / ${gc.antiraid.joinInterval / 1000}s, akcja: ${gc.antiraid.action.toUpperCase()}`)], flags: MessageFlags.Ephemeral });
     }
     if (sub === 'lockdown') {
       const aktywny = interaction.options.getBoolean('aktywny');
@@ -3606,27 +3654,27 @@ if (commandName === 'antiraid') {
     if (sub === 'log') {
       gc.antiraid.logChannel = interaction.options.getChannel('kanal').id;
       saveConfig();
-      return interaction.reply({ embeds: [embed('#2ed573', '✅ Logi ustawione', `AntiRaid → <#${gc.antiraid.logChannel}>`)], ephemeral: true });
+      return interaction.reply({ embeds: [embed('#2ed573', '✅ Logi ustawione', `AntiRaid → <#${gc.antiraid.logChannel}>`)], flags: MessageFlags.Ephemeral });
     }
   }
 
   // ── channelguard ──────────────────────────────────────────────────────
   if (commandName === 'channelguard') {
     const sub = interaction.options.getSubcommand();
-    if (sub === 'on')  { gc.channelGuard.enabled = true; gc.channelGuard.blockNewChannels = true;  saveConfig(); return interaction.reply({ embeds: [embed('#2ed573', '✅ Channel Guard włączony', 'Blokada aktywna.')],              ephemeral: true }); }
-    if (sub === 'off') { gc.channelGuard.blockNewChannels = false;                                  saveConfig(); return interaction.reply({ embeds: [embed('#ff4757', '❌ Channel Guard wyłączony', 'Tworzenie kanałów dozwolone.')], ephemeral: true }); }
+    if (sub === 'on')  { gc.channelGuard.enabled = true; gc.channelGuard.blockNewChannels = true;  saveConfig(); return interaction.reply({ embeds: [embed('#2ed573', '✅ Channel Guard włączony', 'Blokada aktywna.')],              flags: MessageFlags.Ephemeral }); }
+    if (sub === 'off') { gc.channelGuard.blockNewChannels = false;                                  saveConfig(); return interaction.reply({ embeds: [embed('#ff4757', '❌ Channel Guard wyłączony', 'Tworzenie kanałów dozwolone.')], flags: MessageFlags.Ephemeral }); }
     if (sub === 'whitelist') {
       const role = interaction.options.getRole('rola');
       if (!gc.channelGuard.whitelistedRoles.includes(role.id)) {
         gc.channelGuard.whitelistedRoles.push(role.id);
         saveConfig();
       }
-      return interaction.reply({ embeds: [embed('#2ed573', '✅ Rola dodana do whitelisty', `<@&${role.id}> może tworzyć kanały.`)], ephemeral: true });
+      return interaction.reply({ embeds: [embed('#2ed573', '✅ Rola dodana do whitelisty', `<@&${role.id}> może tworzyć kanały.`)], flags: MessageFlags.Ephemeral });
     }
     if (sub === 'log') {
       gc.channelGuard.logChannel = interaction.options.getChannel('kanal').id;
       saveConfig();
-      return interaction.reply({ embeds: [embed('#2ed573', '✅ Logi ustawione', `Channel Guard → <#${gc.channelGuard.logChannel}>`)], ephemeral: true });
+      return interaction.reply({ embeds: [embed('#2ed573', '✅ Logi ustawione', `Channel Guard → <#${gc.channelGuard.logChannel}>`)], flags: MessageFlags.Ephemeral });
     }
   }
 
@@ -3663,7 +3711,7 @@ if (commandName === 'antiraid') {
     return interaction.reply({ embeds: [embed(
       '#ffa502', '⚠️ Ostrzeżenie wydane',
       `<@${user.id}> dostał/a ostrzeżenie.\nPowód: ${reason}\nŁącznie ostrzeżeń: ${count}${extraMsg}`,
-    )], ephemeral: true });
+    )], flags: MessageFlags.Ephemeral });
   }
 
   // ── warnings ──────────────────────────────────────────────────────────
@@ -3671,7 +3719,7 @@ if (commandName === 'antiraid') {
     const user  = interaction.options.getUser('uzytkownik');
     const warns = gc.warns[user.id] || [];
     if (!warns.length) {
-      return interaction.reply({ embeds: [embed('#2ed573', '✅ Brak ostrzeżeń', `<@${user.id}> nie ma żadnych ostrzeżeń.`)], ephemeral: true });
+      return interaction.reply({ embeds: [embed('#2ed573', '✅ Brak ostrzeżeń', `<@${user.id}> nie ma żadnych ostrzeżeń.`)], flags: MessageFlags.Ephemeral });
     }
     const list = warns.map((w, i) =>
       `**${i + 1}.** ${w.reason} — *${w.mod}* | ${new Date(w.date).toLocaleDateString('pl-PL')}`
@@ -3679,7 +3727,7 @@ if (commandName === 'antiraid') {
     return interaction.reply({ embeds: [embed(
       '#ffa502', `⚠️ Ostrzeżenia — ${user.tag}`, list,
       [{ name: 'Łącznie', value: `${warns.length} ostrzeżeń`, inline: true }]
-    )], ephemeral: true });
+    )], flags: MessageFlags.Ephemeral });
   }
 
   // ── clearwarns ────────────────────────────────────────────────────────
@@ -3689,7 +3737,7 @@ if (commandName === 'antiraid') {
     gc.warns[user.id] = [];
     saveConfig();
     await sendModLog(interaction.guild, 'CLEAR WARNS', user, interaction.user, `Usunięto ${count} ostrzeżeń`, '#2ed573');
-    return interaction.reply({ embeds: [embed('#2ed573', '🗑️ Ostrzeżenia wyczyszczone', `Usunięto **${count}** ostrzeżeń dla <@${user.id}>.`)], ephemeral: true });
+    return interaction.reply({ embeds: [embed('#2ed573', '🗑️ Ostrzeżenia wyczyszczone', `Usunięto **${count}** ostrzeżeń dla <@${user.id}>.`)], flags: MessageFlags.Ephemeral });
   }
 
   // ── unmute ────────────────────────────────────────────────────────────
@@ -3700,9 +3748,9 @@ if (commandName === 'antiraid') {
       await member.timeout(null);
       mutedUsers.delete(user.id);
       await sendModLog(interaction.guild, 'UNMUTE', user, interaction.user, 'Ręczne zdjęcie muta', '#2ed573');
-      return interaction.reply({ embeds: [embed('#2ed573', '✅ Muta zdjęty', `Zdjęto muta z <@${user.id}>.`)], ephemeral: true });
+      return interaction.reply({ embeds: [embed('#2ed573', '✅ Muta zdjęty', `Zdjęto muta z <@${user.id}>.`)], flags: MessageFlags.Ephemeral });
     } catch {
-      return interaction.reply({ embeds: [embed('#ff4757', '❌ Błąd', 'Nie udało się zdjąć muta.')], ephemeral: true });
+      return interaction.reply({ embeds: [embed('#ff4757', '❌ Błąd', 'Nie udało się zdjąć muta.')], flags: MessageFlags.Ephemeral });
     }
   }
 
@@ -3712,12 +3760,12 @@ if (commandName === 'antiraid') {
     const reason = interaction.options.getString('powod') || 'Brak powodu';
     try {
       const member = await interaction.guild.members.fetch(user.id);
-      if (!member.kickable) return interaction.reply({ embeds: [embed('#ff4757', '❌ Błąd', 'Nie mogę wyrzucić tego użytkownika (wyższe uprawnienia).')], ephemeral: true });
+      if (!member.kickable) return interaction.reply({ embeds: [embed('#ff4757', '❌ Błąd', 'Nie mogę wyrzucić tego użytkownika (wyższe uprawnienia).')], flags: MessageFlags.Ephemeral });
       await member.kick(reason);
       await sendModLog(interaction.guild, 'KICK', user, interaction.user, reason, '#ff6b00');
-      return interaction.reply({ embeds: [embed('#ff6b00', '👢 Użytkownik wyrzucony', `<@${user.id}> został/a wyrzucony/a.\nPowód: ${reason}`)], ephemeral: true });
+      return interaction.reply({ embeds: [embed('#ff6b00', '👢 Użytkownik wyrzucony', `<@${user.id}> został/a wyrzucony/a.\nPowód: ${reason}`)], flags: MessageFlags.Ephemeral });
     } catch {
-      return interaction.reply({ embeds: [embed('#ff4757', '❌ Błąd', 'Nie udało się wyrzucić użytkownika.')], ephemeral: true });
+      return interaction.reply({ embeds: [embed('#ff4757', '❌ Błąd', 'Nie udało się wyrzucić użytkownika.')], flags: MessageFlags.Ephemeral });
     }
   }
 
@@ -3727,12 +3775,12 @@ if (commandName === 'antiraid') {
     const reason = interaction.options.getString('powod') || 'Brak powodu';
     try {
       const member = await interaction.guild.members.fetch(user.id).catch(() => null);
-      if (member && !member.bannable) return interaction.reply({ embeds: [embed('#ff4757', '❌ Błąd', 'Nie mogę zbanować tego użytkownika (wyższe uprawnienia).')], ephemeral: true });
+      if (member && !member.bannable) return interaction.reply({ embeds: [embed('#ff4757', '❌ Błąd', 'Nie mogę zbanować tego użytkownika (wyższe uprawnienia).')], flags: MessageFlags.Ephemeral });
       await interaction.guild.members.ban(user.id, { reason });
       await sendModLog(interaction.guild, 'BAN', user, interaction.user, reason, '#ff0000');
-      return interaction.reply({ embeds: [embed('#ff0000', '🔨 Użytkownik zbanowany', `<@${user.id}> został/a zbanowany/a.\nPowód: ${reason}`)], ephemeral: true });
+      return interaction.reply({ embeds: [embed('#ff0000', '🔨 Użytkownik zbanowany', `<@${user.id}> został/a zbanowany/a.\nPowód: ${reason}`)], flags: MessageFlags.Ephemeral });
     } catch {
-      return interaction.reply({ embeds: [embed('#ff4757', '❌ Błąd', 'Nie udało się zbanować użytkownika.')], ephemeral: true });
+      return interaction.reply({ embeds: [embed('#ff4757', '❌ Błąd', 'Nie udało się zbanować użytkownika.')], flags: MessageFlags.Ephemeral });
     }
   }
 
@@ -3742,9 +3790,9 @@ if (commandName === 'antiraid') {
     try {
       await interaction.guild.members.unban(id);
       await sendModLog(interaction.guild, 'UNBAN', { tag: `ID: ${id}`, id }, interaction.user, 'Ręczne odbanowanie', '#2ed573');
-      return interaction.reply({ embeds: [embed('#2ed573', '✅ Odbanowano', `Użytkownik o ID \`${id}\` został/a odbanowany/a.`)], ephemeral: true });
+      return interaction.reply({ embeds: [embed('#2ed573', '✅ Odbanowano', `Użytkownik o ID \`${id}\` został/a odbanowany/a.`)], flags: MessageFlags.Ephemeral });
     } catch {
-      return interaction.reply({ embeds: [embed('#ff4757', '❌ Błąd', 'Nie znaleziono bana lub nieprawidłowe ID.')], ephemeral: true });
+      return interaction.reply({ embeds: [embed('#ff4757', '❌ Błąd', 'Nie znaleziono bana lub nieprawidłowe ID.')], flags: MessageFlags.Ephemeral });
     }
   }
 
@@ -3760,7 +3808,7 @@ if (commandName === 'antiraid') {
       if (!unverifiedRole) {
         unverifiedRole = await interaction.guild.roles.create({
           name: 'Niezweryfikowany',
-          color: '#747d8c',
+          colors: ('#747d8c') ? { primaryColor: ('#747d8c') } : undefined,
           reason: 'FenixExelent Verification',
         });
       }
@@ -3792,14 +3840,14 @@ if (commandName === 'antiraid') {
           '✅ Weryfikacja skonfigurowana',
           `Rola po weryfikacji: <@&${role.id}>\nRola przed weryfikacją: <@&${unverifiedRole.id}>\nNowi użytkownicy dostaną rolę Niezweryfikowany. Po nadaniu roli Member bot ją usunie.`
         )],
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
     }
-    if (sub === 'on')  { gc.verification.enabled = true;  saveConfig(); return interaction.reply({ embeds: [embed('#2ed573', '✅ Weryfikacja włączona',  'System weryfikacji jest aktywny.')],     ephemeral: true }); }
-    if (sub === 'off') { gc.verification.enabled = false; saveConfig(); return interaction.reply({ embeds: [embed('#ff4757', '❌ Weryfikacja wyłączona', 'System weryfikacji jest nieaktywny.')], ephemeral: true }); }
+    if (sub === 'on')  { gc.verification.enabled = true;  saveConfig(); return interaction.reply({ embeds: [embed('#2ed573', '✅ Weryfikacja włączona',  'System weryfikacji jest aktywny.')],     flags: MessageFlags.Ephemeral }); }
+    if (sub === 'off') { gc.verification.enabled = false; saveConfig(); return interaction.reply({ embeds: [embed('#ff4757', '❌ Weryfikacja wyłączona', 'System weryfikacji jest nieaktywny.')], flags: MessageFlags.Ephemeral }); }
     if (sub === 'panel') {
       await sendVerifyPanel(interaction.channel);
-      return interaction.reply({ embeds: [embed('#2ed573', '✅ Panel wysłany', `Panel weryfikacyjny wysłany na <#${interaction.channel.id}>.`)], ephemeral: true });
+      return interaction.reply({ embeds: [embed('#2ed573', '✅ Panel wysłany', `Panel weryfikacyjny wysłany na <#${interaction.channel.id}>.`)], flags: MessageFlags.Ephemeral });
     }
   }
 
@@ -3812,13 +3860,13 @@ if (commandName === 'antiraid') {
       gc.tickets.supportRoleId = role.id;
       if (logsCh) gc.tickets.logChannelId = logsCh.id;
       saveConfig();
-      return interaction.reply({ embeds: [embed('#2ed573', '✅ Tickety skonfigurowane', `Rola supportu: <@&${role.id}>${logsCh ? `\nLogi: <#${logsCh.id}>` : ''}`)], ephemeral: true });
+      return interaction.reply({ embeds: [embed('#2ed573', '✅ Tickety skonfigurowane', `Rola supportu: <@&${role.id}>${logsCh ? `\nLogi: <#${logsCh.id}>` : ''}`)], flags: MessageFlags.Ephemeral });
     }
-    if (sub === 'on')  { gc.tickets.enabled = true;  saveConfig(); return interaction.reply({ embeds: [embed('#2ed573', '✅ Tickety włączone',  'System ticketów aktywny.')],     ephemeral: true }); }
-    if (sub === 'off') { gc.tickets.enabled = false; saveConfig(); return interaction.reply({ embeds: [embed('#ff4757', '❌ Tickety wyłączone', 'System ticketów nieaktywny.')], ephemeral: true }); }
+    if (sub === 'on')  { gc.tickets.enabled = true;  saveConfig(); return interaction.reply({ embeds: [embed('#2ed573', '✅ Tickety włączone',  'System ticketów aktywny.')],     flags: MessageFlags.Ephemeral }); }
+    if (sub === 'off') { gc.tickets.enabled = false; saveConfig(); return interaction.reply({ embeds: [embed('#ff4757', '❌ Tickety wyłączone', 'System ticketów nieaktywny.')], flags: MessageFlags.Ephemeral }); }
     if (sub === 'panel') {
       await sendTicketPanel(interaction.channel);
-      return interaction.reply({ embeds: [embed('#2ed573', '✅ Panel wysłany', `Panel ticketów na <#${interaction.channel.id}>.`)], ephemeral: true });
+      return interaction.reply({ embeds: [embed('#2ed573', '✅ Panel wysłany', `Panel ticketów na <#${interaction.channel.id}>.`)], flags: MessageFlags.Ephemeral });
     }
   }
   // ── botserver ──────────────────────────────────────────────────
@@ -3829,19 +3877,19 @@ if (commandName === 'antiraid') {
     if (interaction.guild.id !== SUPPORT_GUILD_ID) {
       return interaction.reply({
         content: '❌ Ta komenda działa tylko na oficjalnym serwerze FenixExelent.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
     if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
       return interaction.reply({
         content: '❌ Tylko administrator może użyć tej komendy.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
     if (sub === 'setup') {
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       await setupOfficialBotServer(interaction.guild);
 
       return interaction.editReply({
@@ -3850,7 +3898,7 @@ if (commandName === 'antiraid') {
     }
 
     if (sub === 'refresh') {
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       await refreshOfficialBotServer(interaction.guild);
 
       return interaction.editReply({
@@ -4368,7 +4416,7 @@ client.on('interactionCreate', async (interaction) => {
     await handleButton(interaction, gc);
   } catch (err) {
     console.error(`Błąd przycisku ${interaction.customId}:`, err);
-    const errMsg = { content: '❌ Wystąpił błąd.', ephemeral: true };
+    const errMsg = { content: '❌ Wystąpił błąd.', flags: MessageFlags.Ephemeral };
     if (!interaction.replied && !interaction.deferred) await interaction.reply(errMsg).catch(() => {});
   }
 });
@@ -4381,12 +4429,12 @@ async function handleButton(interaction, gc) {
 
   if (interaction.customId.startsWith('appeal:')) {
     if (!isStaffMember(interaction.member, gc)) {
-      return interaction.reply({ content: '❌ Tylko staff może obsłużyć appeal.', ephemeral: true });
+      return interaction.reply({ content: '❌ Tylko staff może obsłużyć appeal.', flags: MessageFlags.Ephemeral });
     }
     const [, action, appealId] = interaction.customId.split(':');
     const appeals = ensureAppeals(gc);
     const appeal = appeals.cases?.[appealId];
-    if (!appeal) return interaction.reply({ content: '❌ Appeal nie istnieje albo wygasł.', ephemeral: true });
+    if (!appeal) return interaction.reply({ content: '❌ Appeal nie istnieje albo wygasł.', flags: MessageFlags.Ephemeral });
 
     let result = 'Zaktualizowano appeal.';
     if (action === 'accept') {
@@ -4407,25 +4455,25 @@ async function handleButton(interaction, gc) {
     appeal.reviewedAt = new Date().toISOString();
     saveConfig();
     await interaction.message.edit({ components: buildDisabledAppealButtons(appealId) }).catch(() => {});
-    return interaction.reply({ content: result, ephemeral: true });
+    return interaction.reply({ content: result, flags: MessageFlags.Ephemeral });
   }
 
   if (interaction.customId.startsWith('scamreport:')) {
     if (!isStaffMember(interaction.member, gc)) {
-      return interaction.reply({ content: '❌ Tylko staff może obsłużyć zgłoszenie scam.', ephemeral: true });
+      return interaction.reply({ content: '❌ Tylko staff może obsłużyć zgłoszenie scam.', flags: MessageFlags.Ephemeral });
     }
 
     const [, action, reportId] = interaction.customId.split(':');
     const report = scamReports.get(reportId);
     if (!report) {
-      return interaction.reply({ content: '❌ To zgłoszenie wygasło po restarcie bota albo nie istnieje.', ephemeral: true });
+      return interaction.reply({ content: '❌ To zgłoszenie wygasło po restarcie bota albo nie istnieje.', flags: MessageFlags.Ephemeral });
     }
 
     let result = 'Akcja wykonana.';
 
     if (action === 'block') {
       if (!report.domain) {
-        return interaction.reply({ content: '❌ W zgłoszeniu nie ma wykrytej domeny do dodania.', ephemeral: true });
+        return interaction.reply({ content: '❌ W zgłoszeniu nie ma wykrytej domeny do dodania.', flags: MessageFlags.Ephemeral });
       }
       if (!gc.antiscam.blockedDomains) gc.antiscam.blockedDomains = [];
       gc.antiscam.blockedDomains = normalizeBlockedDomains([...DEFAULT_BLOCKED_DOMAINS, ...gc.antiscam.blockedDomains, report.domain]);
@@ -4435,10 +4483,10 @@ async function handleButton(interaction, gc) {
 
     if (action === 'mute') {
       if (!report.targetId) {
-        return interaction.reply({ content: '❌ W zgłoszeniu nie wskazano użytkownika do muta.', ephemeral: true });
+        return interaction.reply({ content: '❌ W zgłoszeniu nie wskazano użytkownika do muta.', flags: MessageFlags.Ephemeral });
       }
       const member = await interaction.guild.members.fetch(report.targetId).catch(() => null);
-      if (!member) return interaction.reply({ content: '❌ Nie znaleziono użytkownika na serwerze.', ephemeral: true });
+      if (!member) return interaction.reply({ content: '❌ Nie znaleziono użytkownika na serwerze.', flags: MessageFlags.Ephemeral });
       await member.timeout((gc.antiscam?.muteMinutes || 60) * 60 * 1000, `FenixExelent Scam Report: ${report.domain || report.link || reportId}`).catch(() => {});
       addRisk(gc, report.targetId, 25, `Scam report mute: ${report.domain || report.link || reportId}`, { type: 'reportscam-mute' });
       saveConfig();
@@ -4447,7 +4495,7 @@ async function handleButton(interaction, gc) {
 
     if (action === 'ban') {
       if (!report.targetId) {
-        return interaction.reply({ content: '❌ W zgłoszeniu nie wskazano użytkownika do bana.', ephemeral: true });
+        return interaction.reply({ content: '❌ W zgłoszeniu nie wskazano użytkownika do bana.', flags: MessageFlags.Ephemeral });
       }
       await interaction.guild.members.ban(report.targetId, { reason: `FenixExelent Scam Report: ${report.domain || report.link || reportId}` }).catch(() => {});
       addRisk(gc, report.targetId, 40, `Scam report ban: ${report.domain || report.link || reportId}`, { type: 'reportscam-ban' });
@@ -4461,7 +4509,7 @@ async function handleButton(interaction, gc) {
 
     scamReports.delete(reportId);
     await interaction.message.edit({ components: buildDisabledScamReportButtons(reportId) }).catch(() => {});
-    return interaction.reply({ content: result, ephemeral: true });
+    return interaction.reply({ content: result, flags: MessageFlags.Ephemeral });
   }
 
   // ── Status Button ──
@@ -4478,14 +4526,14 @@ async function handleButton(interaction, gc) {
           { name: 'Lockdown',    value: gc.antiraid.lockdownActive         ? '🔴 AKTYWNY' : '🟢 Wyłączony', inline: true },
         ]
       )],
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
   // ── Lockdown Toggle ──
   if (interaction.customId === 'lockdown_toggle') {
     if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      return interaction.reply({ content: '❌ Brak uprawnień administratora.', ephemeral: true });
+      return interaction.reply({ content: '❌ Brak uprawnień administratora.', flags: MessageFlags.Ephemeral });
     }
     const aktywny = !gc.antiraid.lockdownActive;
     gc.antiraid.lockdownActive = aktywny;
@@ -4501,7 +4549,7 @@ async function handleButton(interaction, gc) {
       aktywny ? '#ff4757' : '#2ed573',
       aktywny ? '🔒 LOCKDOWN WŁĄCZONY' : '🔓 Lockdown wyłączony',
       aktywny ? 'Nikt nie może pisać.' : 'Serwer w normalnym trybie.'
-    )], ephemeral: true });
+    )], flags: MessageFlags.Ephemeral });
   }
 
 // ── Verification Button ──
@@ -4509,21 +4557,21 @@ if (interaction.customId === 'verify_btn') {
   if (isConfiguredSupportGuild(interaction.guild) && gc.supportLanguages?.enabled) {
     return interaction.reply({
       content: '🌍 Ten panel ma dodatkowy wybór języka. Kliknij przycisk PL / EN / TR / DE / FR pod panelem — wybór języka jednocześnie zweryfikuje konto i odblokuje właściwy kanał supportu.',
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
   if (!gc.verification.enabled) {
     return interaction.reply({
       content: '❌ Weryfikacja jest aktualnie wyłączona.',
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   }
 
   if (!gc.verification.roleId) {
     return interaction.reply({
       content: '❌ Rola weryfikacji nie jest skonfigurowana. Admin musi użyć `/verification setup`.',
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   }
 
@@ -4533,7 +4581,7 @@ if (interaction.customId === 'verify_btn') {
     if (member.roles.cache.has(gc.verification.roleId)) {
       return interaction.reply({
         content: '✅ Jesteś już zweryfikowany/a!',
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
     }
 
@@ -4549,7 +4597,7 @@ if (interaction.customId === 'verify_btn') {
         '✅ Zweryfikowano!',
         `Witaj na **${interaction.guild.name}**! Masz teraz pełny dostęp do serwera. 🔥`
       )],
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
 
   } catch (err) {
@@ -4557,22 +4605,22 @@ if (interaction.customId === 'verify_btn') {
 
     return interaction.reply({
       content: '❌ Wystąpił błąd podczas weryfikacji.',
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   }
 }
   // ── Ticket Open ──
   if (interaction.customId === 'ticket_open') {
     if (!gc.tickets.enabled) {
-      return interaction.reply({ content: '❌ System ticketów jest wyłączony.', ephemeral: true });
+      return interaction.reply({ content: '❌ System ticketów jest wyłączony.', flags: MessageFlags.Ephemeral });
     }
     const userId = interaction.user.id;
     if (gc.tickets.openTickets[userId]) {
       const existing = interaction.guild.channels.cache.get(gc.tickets.openTickets[userId]);
-      if (existing) return interaction.reply({ content: `❌ Masz już otwarty ticket <#${existing.id}>`, ephemeral: true });
+      if (existing) return interaction.reply({ content: `❌ Masz już otwarty ticket <#${existing.id}>`, flags: MessageFlags.Ephemeral });
       delete gc.tickets.openTickets[userId];
     }
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     try {
       const overwrites = [
         { id: interaction.guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
@@ -4631,7 +4679,7 @@ if (interaction.customId === 'verify_btn') {
       (gc.tickets.supportRoleId && interaction.member.roles.cache.has(gc.tickets.supportRoleId)) ||
       Object.values(gc.tickets.openTickets).includes(interaction.channel.id);
 
-    if (!canClose) return interaction.reply({ content: '❌ Brak uprawnień do zamknięcia.', ephemeral: true });
+    if (!canClose) return interaction.reply({ content: '❌ Brak uprawnień do zamknięcia.', flags: MessageFlags.Ephemeral });
 
     const ownerId = Object.keys(gc.tickets.openTickets).find(k => gc.tickets.openTickets[k] === interaction.channel.id);
     if (ownerId) { delete gc.tickets.openTickets[ownerId]; saveConfig(); }
@@ -4652,7 +4700,7 @@ if (interaction.customId === 'verify_btn') {
     const hasSupport = gc.tickets.supportRoleId && interaction.member.roles.cache.has(gc.tickets.supportRoleId);
     const hasManage  = interaction.member.permissions.has(PermissionFlagsBits.ManageChannels);
     if (!hasSupport && !hasManage) {
-      return interaction.reply({ content: '❌ Tylko support może przejąć ticket.', ephemeral: true });
+      return interaction.reply({ content: '❌ Tylko support może przejąć ticket.', flags: MessageFlags.Ephemeral });
     }
     const safeName = interaction.user.username.toLowerCase().replace(/\s+/g, '-');
     await interaction.channel.setName(`ticket-${safeName}-claimed`).catch(() => {});
