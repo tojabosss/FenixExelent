@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>FenixExelentSecurity Dashboard</title>
+<style>
+:root{
+  --bg:#050712;--bg2:#070b18;--side:#090f20;--card:#0d1428;--card2:#111b35;
+  --line:rgba(96,165,250,.22);--line2:rgba(245,158,11,.28);
+  --blue:#2563eb;--blue2:#60a5fa;--gold:#f59e0b;--green:#22c55e;--red:#ef4444;
+  --txt:#f8fbff;--muted:#9fb0d0;--muted2:#64748b;
+}
+*{box-sizing:border-box} body{margin:0;background:radial-gradient(circle at top,#111a36 0,#050712 45%);color:var(--txt);font-family:Inter,Arial,sans-serif}
+a{text-decoration:none;color:inherit}.app{display:grid;grid-template-columns:280px 1fr;min-height:100vh}
+.sidebar{background:rgba(9,15,32,.94);border-right:1px solid var(--line);padding:20px;position:sticky;top:0;height:100vh;overflow:auto}
+.brand{display:flex;align-items:center;gap:10px;font-weight:900;font-size:22px;margin-bottom:22px}.brand span{color:var(--gold)}
+.login{display:block;text-align:center;background:linear-gradient(135deg,var(--blue),#1d4ed8);padding:13px;border-radius:12px;font-weight:900;margin-bottom:16px}
+.user{display:none;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:18px}.user img{width:44px;height:44px;border-radius:50%;vertical-align:middle;margin-right:10px}
+.guildSelect{width:100%;background:#050814;color:#fff;border:1px solid var(--line);border-radius:12px;padding:12px;margin:10px 0 18px}
+.navTitle{font-size:11px;color:var(--muted2);text-transform:uppercase;letter-spacing:.16em;margin:18px 0 8px}
+.nav button{width:100%;background:transparent;color:#c9d7f4;border:0;text-align:left;padding:13px;border-radius:12px;font-weight:800;cursor:pointer;margin:3px 0}
+.nav button:hover,.nav button.active{background:rgba(37,99,235,.18);color:#fff}
+.main{padding:26px 30px}.top{display:flex;justify-content:space-between;align-items:center;gap:18px;margin-bottom:20px}.top h1{font-size:34px;margin:0}.top p{color:var(--muted);margin:6px 0 0}
+.btn{background:linear-gradient(135deg,var(--blue),#1d4ed8);color:#fff;border:0;border-radius:12px;padding:12px 16px;font-weight:900;cursor:pointer}.btn.secondary{background:#111936;border:1px solid var(--line);color:#dbeafe}.btn.danger{background:#7f1d1d}
+.banner{background:linear-gradient(135deg,rgba(245,158,11,.08),rgba(37,99,235,.08));border:1px solid var(--line2);border-radius:20px;overflow:hidden;margin-bottom:22px;min-height:120px;display:flex;align-items:center;justify-content:center}
+.banner img{width:100%;display:block}.bannerFallback{padding:28px;text-align:center;font-weight:900;font-size:28px}.bannerFallback span{color:var(--gold)}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}.stat{background:linear-gradient(180deg,var(--card),#080d1d);border:1px solid var(--line);border-radius:18px;padding:18px}.stat b{font-size:26px}.stat p{color:var(--muted);margin:6px 0 0}
+.panel{display:none}.panel.active{display:block}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.card{background:linear-gradient(180deg,var(--card),#080d1d);border:1px solid var(--line);border-radius:18px;padding:20px}.card h3{margin:0 0 10px}.card p{color:var(--muted)}
+.badge{display:inline-block;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:900}.on{background:rgba(34,197,94,.16);color:#86efac}.off{background:rgba(239,68,68,.16);color:#fca5a5}
+.form{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}.field{background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:16px;padding:16px}.field label{display:block;font-weight:900;margin-bottom:8px;color:#dbeafe}.field input,.field select{width:100%;background:#050814;color:white;border:1px solid var(--line);border-radius:10px;padding:12px}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}.toast{position:fixed;right:22px;bottom:22px;background:#052e16;border:1px solid #22c55e;color:#bbf7d0;padding:14px 18px;border-radius:14px;display:none;font-weight:900;z-index:99}
+.notice{background:rgba(245,158,11,.08);border:1px solid var(--line2);border-radius:16px;padding:14px;margin-bottom:16px;color:#fde68a}
+@media(max-width:1050px){.app{grid-template-columns:1fr}.sidebar{height:auto;position:relative}.stats,.grid,.form{grid-template-columns:1fr}.top{flex-direction:column;align-items:flex-start}}
+
+
+/* FenixExelentSecurity logo clean fix */
+.brand{
+  display:flex !important;
+  align-items:center !important;
+  gap:10px !important;
+  font-weight:900 !important;
+  font-size:18px !important;
+  margin-bottom:22px !important;
+  white-space:nowrap !important;
+  overflow:hidden !important;
+}
+.brand span{
+  color:inherit !important;
+}
+.brand-icon{
+  flex:0 0 auto !important;
+  line-height:1 !important;
+}
+.brand-name{
+  display:inline-flex !important;
+  align-items:baseline !important;
+  flex-wrap:nowrap !important;
+  white-space:nowrap !important;
+  min-width:0 !important;
+  line-height:1 !important;
+  letter-spacing:.02em !important;
+}
+.brand-fenix{
+  color:var(--txt) !important;
+}
+.brand-exelent{
+  color:var(--gold) !important;
+  margin-left:2px !important;
+}
+.brand-security{
+  color:var(--blue2) !important;
+  margin-left:4px !important;
+}
+.bannerFallback .brand-fenix{
+  color:var(--txt) !important;
+}
+.bannerFallback .brand-exelent{
+  color:var(--gold) !important;
+}
+.bannerFallback .brand-security{
+  color:var(--blue2) !important;
+  margin-left:4px !important;
+}
+
+</style>
+</head>
+<body>
+<div class="app">
+<aside class="sidebar">
+  <div class="brand">
+  <span class="brand-icon">🔥</span>
+  <span class="brand-name"><span class="brand-fenix">Fenix</span><span class="brand-exelent">Exelent</span><span class="brand-security">Security</span></span>
+</div>
+  <a id="loginBtn" href="/login" class="login">Login przez Discord</a>
+  <div id="userBox" class="user"></div>
+  <div class="navTitle">Serwer</div>
+  <select id="guildSelect" class="guildSelect"><option>Najpierw się zaloguj</option></select>
+  <div class="navTitle">Panel</div>
+  <div class="nav">
+    <button class="active" onclick="tab('overview',this)">📊 Overview</button>
+    <button onclick="tab('antispam',this)">🛡️ AntiSpam</button>
+    <button onclick="tab('antiraid',this)">🚨 AntiRaid</button>
+    <button onclick="tab('guard',this)">🔒 Channel Guard</button>
+    <button onclick="tab('verify',this)">✅ Weryfikacja</button>
+    <button onclick="tab('tickets',this)">🎫 Tickety</button>
+    <button onclick="tab('logs',this)">📋 Logi</button>
+  </div>
+  <div class="navTitle">Linki</div>
+  <div class="nav">
+    <button onclick="location.href='/'">🏠 Strona główna</button>
+    <button onclick="location.href='/invite'">➕ Dodaj bota</button>
+    <button onclick="location.href='/logout'">🚪 Wyloguj</button>
+  </div>
+</aside>
+
+<main class="main">
+  <div class="banner">
+    <img src="/banner.png" alt="FenixExelent banner" onerror="this.style.display='none';document.getElementById('bannerFallback').style.display='block'">
+    <div id="bannerFallback" class="bannerFallback" style="display:none"><span class="brand-fenix">Fenix</span><span class="brand-exelent">Exelent</span><span class="brand-security">Security</span> Dashboard</div>
+  </div>
+
+  <section id="overview" class="panel active">
+    <div class="top"><div><h1>Przegląd serwera</h1><p>Status modułów i szybkie statystyki bota.</p></div><button class="btn" onclick="refresh()">🔄 Odśwież</button></div>
+    <div class="stats">
+      <div class="stat"><b id="sGuilds">-</b><p>Serwery</p></div><div class="stat"><b id="sUsers">-</b><p>Użytkownicy</p></div><div class="stat"><b id="sPing">-</b><p>Ping</p></div><div class="stat"><b id="sUp">-</b><p>Uptime</p></div>
+    </div>
+    <div class="grid">
+      <div class="card"><h3>🛡️ AntiSpam</h3><span id="bAS" class="badge off">-</span><p>Spam, flood, timeout i logi.</p></div>
+      <div class="card"><h3>🚨 AntiRaid</h3><span id="bAR" class="badge off">-</span><p>Masowe wejścia, kick/ban/mute i lockdown.</p></div>
+      <div class="card"><h3>🔒 Channel Guard</h3><span id="bCG" class="badge off">-</span><p>Blokada nieautoryzowanych kanałów.</p></div>
+      <div class="card"><h3>✅ Weryfikacja</h3><span id="bVF" class="badge off">-</span><p>Rola po kliknięciu przycisku.</p></div>
+      <div class="card"><h3>🎫 Tickety</h3><span id="bTK" class="badge off">-</span><p>Pomoc i prywatne kanały supportu.</p></div>
+      <div class="card"><h3>📋 Logi</h3><span class="badge on">Gotowe</span><p>Logi akcji dashboardu i moderacji.</p></div>
+    </div>
+  </section>
+
+  <section id="antispam" class="panel"><div class="top"><div><h1>🛡️ AntiSpam</h1><p>Zmiany zapisują się do configu i działają od razu na Discordzie.</p></div></div>
+    <div class="form">
+      <div class="field"><label>Status</label><select id="asEnabled"><option value="true">Włączony</option><option value="false">Wyłączony</option></select></div>
+      <div class="field"><label>Max wiadomości</label><input id="asMax" type="number" min="2" max="20"></div>
+      <div class="field"><label>Czas / sekundy</label><input id="asTime" type="number" min="1" max="60"></div>
+      <div class="field"><label>Mute / minuty</label><input id="asMute" type="number" min="1"></div>
+      <div class="field"><label>Kanał logów</label><select id="asLog"></select></div>
+    </div><div class="actions"><button class="btn" onclick="save()">💾 Zapisz</button><button class="btn secondary" onclick="loadConfig()">↩ Reset</button></div>
+  </section>
+
+  <section id="antiraid" class="panel"><div class="top"><div><h1>🚨 AntiRaid</h1><p>Lockdown zmienia uprawnienia kanałów tekstowych na serwerze.</p></div></div>
+    <div class="form">
+      <div class="field"><label>Status</label><select id="arEnabled"><option value="true">Włączony</option><option value="false">Wyłączony</option></select></div>
+      <div class="field"><label>Max dołączeń</label><input id="arJoins" type="number"></div>
+      <div class="field"><label>Czas / sekundy</label><input id="arTime" type="number"></div>
+      <div class="field"><label>Akcja</label><select id="arAction"><option value="kick">Kick</option><option value="ban">Ban</option><option value="mute">Mute</option></select></div>
+      <div class="field"><label>Lockdown</label><select id="arLock"><option value="false">Wyłączony</option><option value="true">Włączony</option></select></div>
+      <div class="field"><label>Kanał logów</label><select id="arLog"></select></div>
+    </div><div class="actions"><button class="btn" onclick="save()">💾 Zapisz</button></div>
+  </section>
+
+  <section id="guard" class="panel"><div class="top"><div><h1>🔒 Channel Guard</h1><p>Ochrona przed tworzeniem kanałów przez nieuprawnione osoby.</p></div></div>
+    <div class="form">
+      <div class="field"><label>Status</label><select id="cgEnabled"><option value="true">Włączony</option><option value="false">Wyłączony</option></select></div>
+      <div class="field"><label>Blokuj nowe kanały</label><select id="cgBlock"><option value="true">Tak</option><option value="false">Nie</option></select></div>
+      <div class="field"><label>Kanał logów</label><select id="cgLog"></select></div>
+    </div><div class="actions"><button class="btn" onclick="save()">💾 Zapisz</button></div>
+  </section>
+
+  <section id="verify" class="panel"><div class="top"><div><h1>✅ Weryfikacja</h1><p>Wybierz rolę i kanał, potem kliknij „Wyślij panel”.</p></div></div>
+    <div class="form">
+      <div class="field"><label>Status</label><select id="vfEnabled"><option value="true">Włączona</option><option value="false">Wyłączona</option></select></div>
+      <div class="field"><label>Rola po weryfikacji</label><select id="vfRole"></select></div>
+      <div class="field"><label>Kanał panelu</label><select id="vfChannel"></select></div>
+    </div><div class="actions"><button class="btn" onclick="save()">💾 Zapisz</button><button class="btn secondary" onclick="sendVerify()">📤 Wyślij panel</button></div>
+  </section>
+
+  <section id="tickets" class="panel"><div class="top"><div><h1>🎫 Tickety</h1><p>Support, logi i panel otwierania ticketów.</p></div></div>
+    <div class="form">
+      <div class="field"><label>Status</label><select id="tkEnabled"><option value="true">Włączone</option><option value="false">Wyłączone</option></select></div>
+      <div class="field"><label>Rola supportu</label><select id="tkRole"></select></div>
+      <div class="field"><label>Kanał logów</label><select id="tkLogs"></select></div>
+      <div class="field"><label>Kanał panelu</label><select id="tkChannel"></select></div>
+    </div><div class="actions"><button class="btn" onclick="save()">💾 Zapisz</button><button class="btn secondary" onclick="sendTicket()">📤 Wyślij panel</button></div>
+  </section>
+
+  <section id="logs" class="panel"><div class="top"><div><h1>📋 Logi</h1><p>Główne kanały logowania akcji bota.</p></div></div>
+    <div class="form">
+      <div class="field"><label>Mod Log</label><select id="modLog"></select></div>
+    </div><div class="actions"><button class="btn" onclick="save()">💾 Zapisz</button></div>
+  </section>
+</main>
+</div>
+<div id="toast" class="toast"></div>
+
+<script>
+let selectedGuild = new URLSearchParams(location.search).get('guild') || localStorage.getItem('selectedGuild');
+let meta = {channels:[], roles:[]};
+
+function tab(id,btn){document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));document.getElementById(id).classList.add('active');document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('active'));btn.classList.add('active')}
+function bool(v){return v===true||v==='true'} function toastMsg(t,ok=true){toast.textContent=t;toast.style.display='block';toast.style.background=ok?'#052e16':'#3b0a0a';setTimeout(()=>toast.style.display='none',2500)}
+function setBadge(el,on){el.className='badge '+(on?'on':'off');el.textContent=on?'✅ Włączony':'❌ Wyłączony'}
+
+async function loadMe(){
+  const r=await fetch('/api/me'); const me=await r.json();
+  if(!me.loggedIn){loginBtn.style.display='block';return}
+  loginBtn.style.display='none'; userBox.style.display='block'; userBox.innerHTML=`<img src="${me.user.avatar}"><b>${me.user.username}</b>`;
+  await loadGuilds(); await refresh();
+}
+async function loadGuilds(){
+  const r=await fetch('/api/guilds'); if(!r.ok)return; const guilds=await r.json();
+  guildSelect.innerHTML='<option value="">Wybierz serwer</option>';
+  guilds.forEach(g=>{let o=document.createElement('option');o.value=g.id;o.textContent=`${g.name} ${g.hasBot?'✅':'❌'}`;guildSelect.appendChild(o)});
+  if(selectedGuild) guildSelect.value=selectedGuild;
+  guildSelect.onchange=async()=>{selectedGuild=guildSelect.value;localStorage.setItem('selectedGuild',selectedGuild);await refresh();toastMsg('✅ Wybrano serwer')}
+}
+async function loadMeta(){
+  if(!selectedGuild)return;
+  const r=await fetch('/api/guild/'+selectedGuild+'/meta'); if(!r.ok){meta={channels:[],roles:[]}; return}
+  meta=await r.json(); fillSelects();
+}
+function fill(sel,items,type){sel.innerHTML='<option value="">Brak / wybierz</option>';items.forEach(i=>{let o=document.createElement('option');o.value=i.id;o.textContent=(type==='role'?'@':'#')+i.name;sel.appendChild(o)})}
+function fillSelects(){
+  [asLog,arLog,cgLog,vfChannel,tkLogs,tkChannel,modLog].forEach(s=>fill(s,meta.channels,'channel'));
+  [vfRole,tkRole].forEach(s=>fill(s,meta.roles,'role'));
+}
+async function loadConfig(){
+  if(!selectedGuild)return;
+  await loadMeta();
+  const r=await fetch('/api/config/'+selectedGuild); if(!r.ok)return; const c=await r.json();
+  asEnabled.value=String(c.antispam.enabled); asMax.value=c.antispam.maxMessages; asTime.value=c.antispam.interval/1000; asMute.value=c.antispam.muteMinutes; asLog.value=c.antispam.logChannel||'';
+  arEnabled.value=String(c.antiraid.enabled); arJoins.value=c.antiraid.joinThreshold; arTime.value=c.antiraid.joinInterval/1000; arAction.value=c.antiraid.action; arLock.value=String(c.antiraid.lockdownActive); arLog.value=c.antiraid.logChannel||'';
+  cgEnabled.value=String(c.channelGuard.enabled); cgBlock.value=String(c.channelGuard.blockNewChannels); cgLog.value=c.channelGuard.logChannel||'';
+  vfEnabled.value=String(c.verification.enabled); vfRole.value=c.verification.roleId||''; vfChannel.value=c.verification.channelId||'';
+  tkEnabled.value=String(c.tickets.enabled); tkRole.value=c.tickets.supportRoleId||''; tkLogs.value=c.tickets.logChannelId||''; tkChannel.value=c.tickets.panelChannelId||'';
+  modLog.value=c.modLog?.channelId||'';
+  setBadge(bAS,c.antispam.enabled);setBadge(bAR,c.antiraid.enabled);setBadge(bCG,c.channelGuard.blockNewChannels);setBadge(bVF,c.verification.enabled);setBadge(bTK,c.tickets.enabled);
+}
+function body(extra={}){
+  return {
+    antispam:{enabled:bool(asEnabled.value),maxMessages:+asMax.value,interval:+asTime.value*1000,muteMinutes:+asMute.value,logChannel:asLog.value||null},
+    antiraid:{enabled:bool(arEnabled.value),joinThreshold:+arJoins.value,joinInterval:+arTime.value*1000,action:arAction.value,lockdownActive:bool(arLock.value),logChannel:arLog.value||null},
+    channelGuard:{enabled:bool(cgEnabled.value),blockNewChannels:bool(cgBlock.value),logChannel:cgLog.value||null},
+    verification:{enabled:bool(vfEnabled.value),roleId:vfRole.value||null,channelId:vfChannel.value||null},
+    tickets:{enabled:bool(tkEnabled.value),supportRoleId:tkRole.value||null,logChannelId:tkLogs.value||null,panelChannelId:tkChannel.value||null},
+    modLog:{channelId:modLog.value||null},
+    actions: extra
+  };
+}
+async function save(extra={}){
+  if(!selectedGuild)return toastMsg('❌ Wybierz serwer',false);
+  const r=await fetch('/api/config/'+selectedGuild,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body(extra))});
+  if(r.ok){toastMsg('✅ Zapisano i zsynchronizowano z Discordem');await loadConfig()} else toastMsg('❌ Błąd zapisu',false);
+}
+async function sendVerify(){vfEnabled.value='true';await save({sendVerificationPanel:true})}
+async function sendTicket(){tkEnabled.value='true';await save({sendTicketPanel:true})}
+async function refresh(){await loadConfig();const r=await fetch('/api/stats');if(!r.ok)return;const s=await r.json();sGuilds.textContent=s.guilds;sUsers.textContent=s.users;sPing.textContent=s.ping+'ms';sUp.textContent=Math.floor(s.uptime/60)+' min'}
+loadMe();
+</script>
+</body>
+</html>
