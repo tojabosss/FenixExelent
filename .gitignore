@@ -1,16 +1,5 @@
-﻿node_modules/
+node_modules/
 .env
 config.json
-backups/
-_archive/
-*.zip
 *.log
-npm-debug.log*
 .DS_Store
-backend_stats_endpoint_patch.js
-indexjs-dashboard-backend-patch.js
-require('dotenv').config();.txt
-HTML
-HTML.txt
-README_PL.txt
-README_dashboard_oauth_PL.txt

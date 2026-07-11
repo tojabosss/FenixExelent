@@ -55,10 +55,7 @@ function loadConfig() {
 }
 
 function saveConfig() {
-  const tempPath = `${CONFIG_PATH}.tmp`;
-  const payload = JSON.stringify(config, null, 2);
-  fs.writeFileSync(tempPath, payload, 'utf8');
-  fs.renameSync(tempPath, CONFIG_PATH);
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
 }
 
 function getGuildConfig(guildId) {
@@ -169,7 +166,6 @@ verification: {
   roleId: null,
   unverifiedRoleId: null,
   channelId: null,
-  languageRoles: {},
 },
 
 reactionRoles: {
@@ -586,7 +582,7 @@ async function ensureVerificationForAntiAlt(guild, gc) {
         await ch.permissionOverwrites.edit(unverifiedRole, {
           ViewChannel: true,
           ReadMessageHistory: true,
-          SendMessages: false,
+          SendMessages: true,
         }).catch(() => {});
       } else {
         await ch.permissionOverwrites.edit(unverifiedRole, {
@@ -2104,18 +2100,12 @@ if (commandName === 'help') {
       .setFooter({ text: 'Dołączając akceptujesz regulamin. 🔥' })
     ] });
 
-    // Weryfikacja — /setup ma przygotować kompletny, aktywny system.
+    // Weryfikacja
     const catVerify = await getOrCreateCategory(guild, '🔐 WERYFIKACJA');
     const chVerify  = await getOrCreateText(guild, catVerify, '✅│weryfikacja', rwText);
-    gc.verification.channelId = chVerify.id;
-
-    const verificationSetup = await ensureVerificationForAntiAlt(guild, gc);
-    if (!verificationSetup.ok) {
-      throw new Error('Nie udało się utworzyć ról lub kanału weryfikacji. Sprawdź uprawnienia bota.');
-    }
-
     await chVerify.bulkDelete(10).catch(() => {});
     await sendVerifyPanel(chVerify);
+    gc.verification.channelId = chVerify.id;
 
     // Tickety
     const catTickets = await getOrCreateCategory(guild, '🎫 TICKETY');
@@ -3050,166 +3040,55 @@ if (commandName === 'antiraid') {
   // ── verification ──────────────────────────────────────────────────────
   if (commandName === 'verification') {
     const sub = interaction.options.getSubcommand();
-
-    if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
-      return interaction.reply({
-        content: '❌ Potrzebujesz uprawnienia **Zarządzanie serwerem**.',
-        flags: MessageFlags.Ephemeral,
-      });
-    }
-
     if (sub === 'setup') {
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-
       const role = interaction.options.getRole('rola');
-      const botMember = interaction.guild.members.me || await interaction.guild.members.fetchMe().catch(() => null);
-
-      if (!botMember?.permissions.has(PermissionFlagsBits.ManageRoles)) {
-        return interaction.editReply('❌ Bot potrzebuje uprawnienia **Zarządzanie rolami**.');
-      }
-
-      if (role.managed || role.id === interaction.guild.roles.everyone.id) {
-        return interaction.editReply('❌ Wybierz zwykłą rolę serwerową, a nie rolę integracji lub @everyone.');
-      }
-
-      if (botMember.roles.highest.comparePositionTo(role) <= 0) {
-        return interaction.editReply(
-          `❌ Rola bota musi znajdować się **wyżej** niż ${role} w ustawieniach ról.`
-        );
-      }
-
       gc.verification.roleId = role.id;
 
-      let unverifiedRole = gc.verification.unverifiedRoleId
-        ? interaction.guild.roles.cache.get(gc.verification.unverifiedRoleId)
-        : null;
-
-      if (!unverifiedRole) {
-        unverifiedRole = interaction.guild.roles.cache.find(
-          r => ['niezweryfikowany', 'unverified'].includes(r.name.toLowerCase())
-        );
-      }
+      let unverifiedRole = interaction.guild.roles.cache.find(r => r.name === 'Niezweryfikowany');
 
       if (!unverifiedRole) {
         unverifiedRole = await interaction.guild.roles.create({
           name: 'Niezweryfikowany',
-          colors: { primaryColor: '#747d8c' },
+          colors: ('#747d8c') ? { primaryColor: ('#747d8c') } : undefined,
           reason: 'FenixExelent Verification',
-        }).catch(() => null);
-      }
-
-      if (!unverifiedRole) {
-        return interaction.editReply('❌ Nie udało się utworzyć roli **Niezweryfikowany**.');
-      }
-
-      if (botMember.roles.highest.comparePositionTo(unverifiedRole) <= 0) {
-        return interaction.editReply(
-          `❌ Rola bota musi znajdować się **wyżej** niż ${unverifiedRole}.`
-        );
+        });
       }
 
       gc.verification.unverifiedRoleId = unverifiedRole.id;
 
-      let verifyChannel = gc.verification.channelId
-        ? interaction.guild.channels.cache.get(gc.verification.channelId)
-        : null;
-
-      if (!verifyChannel) {
-        const category = await getOrCreateCategory(interaction.guild, '🔐 WERYFIKACJA');
-        verifyChannel = await getOrCreateText(
-          interaction.guild,
-          category,
-          '✅│weryfikacja',
-          [{ id: interaction.guild.roles.everyone.id, allow: [PermissionFlagsBits.ViewChannel], deny: [PermissionFlagsBits.SendMessages] }]
-        );
-        gc.verification.channelId = verifyChannel.id;
-      }
-
-      await interaction.guild.channels.fetch().catch(() => {});
+      // Ustaw uprawnienia: Niezweryfikowany widzi tylko kanał weryfikacji
+      const verifyChannelId = gc.verification.channelId;
       for (const [, ch] of interaction.guild.channels.cache) {
-        if (![ChannelType.GuildText, ChannelType.GuildVoice, ChannelType.GuildCategory].includes(ch.type)) continue;
-
-        if (ch.id === verifyChannel.id) {
-          await ch.permissionOverwrites.edit(unverifiedRole, {
-            ViewChannel: true,
-            ReadMessageHistory: true,
-            SendMessages: true,
-          }).catch(() => {});
-        } else {
-          await ch.permissionOverwrites.edit(unverifiedRole, {
-            ViewChannel: false,
-          }).catch(() => {});
-        }
+        try {
+          if (verifyChannelId && ch.id === verifyChannelId) {
+            await ch.permissionOverwrites.edit(unverifiedRole, {
+              ViewChannel: true,
+              ReadMessageHistory: true,
+              SendMessages: true,
+            });
+          } else if (ch.type === ChannelType.GuildText || ch.type === ChannelType.GuildVoice || ch.type === ChannelType.GuildCategory) {
+            await ch.permissionOverwrites.edit(unverifiedRole, {
+              ViewChannel: false,
+            });
+          }
+        } catch {}
       }
 
-      gc.verification.enabled = true;
-      saveConfig();
-
-      await verifyChannel.bulkDelete(10).catch(() => {});
-      await sendVerifyPanel(verifyChannel).catch(() => {});
-
-      return interaction.editReply({
-        embeds: [embed(
-          '#2ed573',
-          '✅ Weryfikacja skonfigurowana i włączona',
-          `Rola po weryfikacji: <@&${role.id}>\n` +
-          `Rola przed weryfikacją: <@&${unverifiedRole.id}>\n` +
-          `Panel: <#${verifyChannel.id}>`
-        )],
-      });
-    }
-
-    if (sub === 'on') {
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-      const result = await ensureVerificationForAntiAlt(interaction.guild, gc);
-
-      if (!result.ok) {
-        return interaction.editReply(
-          '❌ Nie udało się uruchomić weryfikacji. Bot potrzebuje uprawnień **Zarządzanie rolami** i **Zarządzanie kanałami**.'
-        );
-      }
-
-      gc.verification.enabled = true;
-      saveConfig();
-
-      return interaction.editReply({
-        embeds: [embed(
-          '#2ed573',
-          '✅ Weryfikacja włączona',
-          `System jest aktywny. Panel: <#${result.verifyChannel.id}>`
-        )],
-      });
-    }
-
-    if (sub === 'off') {
-      gc.verification.enabled = false;
       saveConfig();
       return interaction.reply({
-        embeds: [embed('#ff4757', '❌ Weryfikacja wyłączona', 'System weryfikacji jest nieaktywny.')],
-        flags: MessageFlags.Ephemeral,
+        embeds: [embed(
+          '#2ed573',
+          '✅ Weryfikacja skonfigurowana',
+          `Rola po weryfikacji: <@&${role.id}>\nRola przed weryfikacją: <@&${unverifiedRole.id}>\nNowi użytkownicy dostaną rolę Niezweryfikowany. Po nadaniu roli Member bot ją usunie.`
+        )],
+        flags: MessageFlags.Ephemeral
       });
     }
-
+    if (sub === 'on')  { gc.verification.enabled = true;  saveConfig(); return interaction.reply({ embeds: [embed('#2ed573', '✅ Weryfikacja włączona',  'System weryfikacji jest aktywny.')],     flags: MessageFlags.Ephemeral }); }
+    if (sub === 'off') { gc.verification.enabled = false; saveConfig(); return interaction.reply({ embeds: [embed('#ff4757', '❌ Weryfikacja wyłączona', 'System weryfikacji jest nieaktywny.')], flags: MessageFlags.Ephemeral }); }
     if (sub === 'panel') {
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-
-      const result = await ensureVerificationForAntiAlt(interaction.guild, gc);
-      if (!result.ok || !gc.verification.roleId) {
-        return interaction.editReply(
-          '❌ Najpierw skonfiguruj rolę przez `/verification setup rola:@Rola`.'
-        );
-      }
-
-      const channel = result.verifyChannel || interaction.channel;
-      await channel.bulkDelete(10).catch(() => {});
-      await sendVerifyPanel(channel);
-      gc.verification.enabled = true;
-      gc.verification.channelId = channel.id;
-      saveConfig();
-
-      return interaction.editReply({
-        embeds: [embed('#2ed573', '✅ Panel wysłany', `Panel weryfikacyjny wysłany na <#${channel.id}>.`)],
-      });
+      await sendVerifyPanel(interaction.channel);
+      return interaction.reply({ embeds: [embed('#2ed573', '✅ Panel wysłany', `Panel weryfikacyjny wysłany na <#${interaction.channel.id}>.`)], flags: MessageFlags.Ephemeral });
     }
   }
 
@@ -3688,69 +3567,16 @@ Important security alerts and warnings will be posted here.`
 // ═══════════════════════════════════════════════════════════════════════════
 //  VERIFICATION PANEL
 // ═══════════════════════════════════════════════════════════════════════════
-const VERIFICATION_LANGUAGES = {
-  pl: { emoji: '🇵🇱', label: 'Polski', roleName: 'PL Polski' },
-  en: { emoji: '🇬🇧', label: 'English', roleName: 'GB English' },
-  tr: { emoji: '🇹🇷', label: 'Türkçe', roleName: 'TR Türkçe' },
-  de: { emoji: '🇩🇪', label: 'Deutsch', roleName: 'DE Deutsch' },
-  fr: { emoji: '🇫🇷', label: 'Français', roleName: 'FR Français' },
-};
-
-async function getOrCreateVerificationLanguageRole(guild, gc, code) {
-  const language = VERIFICATION_LANGUAGES[code];
-  if (!language) return null;
-
-  if (!gc.verification.languageRoles || typeof gc.verification.languageRoles !== 'object') {
-    gc.verification.languageRoles = {};
-  }
-
-  let role = gc.verification.languageRoles[code]
-    ? guild.roles.cache.get(gc.verification.languageRoles[code])
-    : null;
-
-  if (!role) {
-    role = guild.roles.cache.find(r =>
-      !r.managed && r.name.toLowerCase() === language.roleName.toLowerCase()
-    ) || null;
-  }
-
-  if (!role) {
-    role = await guild.roles.create({
-      name: language.roleName,
-      mentionable: false,
-      reason: `FenixExelent: rola językowa ${language.label}`,
-    }).catch(err => {
-      console.error(`Nie udało się utworzyć roli językowej ${language.roleName}:`, err);
-      return null;
-    });
-  }
-
-  if (role) {
-    gc.verification.languageRoles[code] = role.id;
-    saveConfig();
-  }
-
-  return role;
-}
-
 async function sendVerifyPanel(channel) {
+
   const verifyRow = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('verify_btn')
-      .setLabel('Verify / Zweryfikuj się')
-      .setEmoji('✅')
+      .setLabel('✅ Verify / Zweryfikuj się')
       .setStyle(ButtonStyle.Success)
   );
-
-  const languageRow = new ActionRowBuilder().addComponents(
-    ...Object.entries(VERIFICATION_LANGUAGES).map(([code, language]) =>
-      new ButtonBuilder()
-        .setCustomId(`verify_lang:${code}`)
-        .setLabel(language.label)
-        .setEmoji(language.emoji)
-        .setStyle(ButtonStyle.Primary)
-    )
-  );
+  const components = [verifyRow];
+  const extraDescription = '';
 
   await channel.send({
     embeds: [new EmbedBuilder()
@@ -3768,18 +3594,11 @@ Klikając przycisk, potwierdzasz akceptację zasad serwera.
 To access the server, click the button below.
 
 📜 Make sure you have read the rules.
-By clicking the button, you confirm that you accept the server rules.
-
-━━━━━━━━━━━━━━━━━━━━
-
-🌍 **Wybór języka / Language selection**
-Wybierz język poniżej, aby otrzymać odpowiednią rolę i dostęp do właściwego kanału supportu.
-
-Choose your language below to receive the correct role and access to the right support channel.`)
+By clicking the button, you confirm that you accept the server rules.${extraDescription}`)
       .setFooter({ text: 'FenixExelent 🔥' })
       .setTimestamp()
     ],
-    components: [verifyRow, languageRow],
+    components,
   });
 }
 
@@ -3954,126 +3773,57 @@ async function handleButton(interaction, gc) {
     )], flags: MessageFlags.Ephemeral });
   }
 
-  // ── Verification language selection ──
-  if (interaction.customId.startsWith('verify_lang:')) {
-    const code = interaction.customId.split(':')[1];
-    const language = VERIFICATION_LANGUAGES[code];
+// ── Verification Button ──
+if (interaction.customId === 'verify_btn') {
 
-    if (!language) {
-      return interaction.reply({ content: '❌ Nieznany język.', flags: MessageFlags.Ephemeral });
-    }
-
-    const botMember = interaction.guild.members.me || await interaction.guild.members.fetchMe().catch(() => null);
-    if (!botMember?.permissions.has(PermissionFlagsBits.ManageRoles)) {
-      return interaction.reply({
-        content: '❌ Bot nie ma uprawnienia **Zarządzanie rolami**.',
-        flags: MessageFlags.Ephemeral,
-      });
-    }
-
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    await interaction.guild.roles.fetch().catch(() => {});
-
-    const selectedRole = await getOrCreateVerificationLanguageRole(interaction.guild, gc, code);
-    if (!selectedRole) {
-      return interaction.editReply('❌ Nie udało się znaleźć ani utworzyć roli językowej.');
-    }
-
-    if (botMember.roles.highest.comparePositionTo(selectedRole) <= 0) {
-      return interaction.editReply(`❌ Rola bota musi znajdować się wyżej niż ${selectedRole}.`);
-    }
-
-    const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
-    if (!member) return interaction.editReply('❌ Nie udało się pobrać użytkownika.');
-
-    const languageRoleIds = Object.values(gc.verification.languageRoles || {}).filter(Boolean);
-    const rolesToRemove = languageRoleIds.filter(roleId => roleId !== selectedRole.id && member.roles.cache.has(roleId));
-
-    if (rolesToRemove.length) {
-      await member.roles.remove(rolesToRemove, 'FenixExelent: zmiana języka').catch(() => {});
-    }
-
-    if (!member.roles.cache.has(selectedRole.id)) {
-      await member.roles.add(selectedRole, `FenixExelent: wybrano język ${language.label}`).catch(() => null);
-    }
-
-    return interaction.editReply(`${language.emoji} Ustawiono język **${language.label}** i nadano rolę ${selectedRole}.`);
+  if (!gc.verification.enabled) {
+    return interaction.reply({
+      content: '❌ Weryfikacja jest aktualnie wyłączona.',
+      flags: MessageFlags.Ephemeral
+    });
   }
 
-  // ── Verification Button ──
-  if (interaction.customId === 'verify_btn') {
-    if (!gc.verification?.enabled) {
-      return interaction.reply({
-        content: '❌ Weryfikacja jest aktualnie wyłączona. Administrator musi użyć `/verification on`.',
-        flags: MessageFlags.Ephemeral,
-      });
-    }
-
-    const role = gc.verification.roleId
-      ? interaction.guild.roles.cache.get(gc.verification.roleId)
-      : null;
-
-    if (!role) {
-      return interaction.reply({
-        content: '❌ Rola weryfikacji nie istnieje. Administrator musi użyć `/verification setup`.',
-        flags: MessageFlags.Ephemeral,
-      });
-    }
-
-    const botMember = interaction.guild.members.me || await interaction.guild.members.fetchMe().catch(() => null);
-    if (!botMember?.permissions.has(PermissionFlagsBits.ManageRoles)) {
-      return interaction.reply({
-        content: '❌ Bot nie ma uprawnienia **Zarządzanie rolami**.',
-        flags: MessageFlags.Ephemeral,
-      });
-    }
-
-    if (botMember.roles.highest.comparePositionTo(role) <= 0) {
-      return interaction.reply({
-        content: `❌ Rola bota musi być wyżej niż ${role}. Poproś administratora o poprawienie kolejności ról.`,
-        flags: MessageFlags.Ephemeral,
-      });
-    }
-
-    try {
-      const member = await interaction.guild.members.fetch(interaction.user.id);
-
-      if (member.roles.cache.has(role.id)) {
-        if (gc.verification.unverifiedRoleId) {
-          await member.roles.remove(gc.verification.unverifiedRoleId).catch(() => {});
-        }
-        return interaction.reply({
-          content: '✅ Jesteś już zweryfikowany/a!',
-          flags: MessageFlags.Ephemeral,
-        });
-      }
-
-      await member.roles.add(role, 'FenixExelent: weryfikacja przyciskiem');
-
-      if (gc.verification.unverifiedRoleId) {
-        await member.roles.remove(
-          gc.verification.unverifiedRoleId,
-          'FenixExelent: użytkownik zweryfikowany'
-        ).catch(() => {});
-      }
-
-      return interaction.reply({
-        embeds: [embed(
-          '#2ed573',
-          '✅ Zweryfikowano!',
-          `Witaj na **${interaction.guild.name}**! Masz teraz pełny dostęp do serwera. 🔥`
-        )],
-        flags: MessageFlags.Ephemeral,
-      });
-    } catch (err) {
-      console.error('Verify error:', err);
-      return interaction.reply({
-        content: `❌ Nie udało się nadać roli. Sprawdź uprawnienia i kolejność ról bota. (${err.code || 'unknown'})`,
-        flags: MessageFlags.Ephemeral,
-      });
-    }
+  if (!gc.verification.roleId) {
+    return interaction.reply({
+      content: '❌ Rola weryfikacji nie jest skonfigurowana. Admin musi użyć `/verification setup`.',
+      flags: MessageFlags.Ephemeral
+    });
   }
 
+  try {
+    const member = await interaction.guild.members.fetch(interaction.user.id);
+
+    if (member.roles.cache.has(gc.verification.roleId)) {
+      return interaction.reply({
+        content: '✅ Jesteś już zweryfikowany/a!',
+        flags: MessageFlags.Ephemeral
+      });
+    }
+
+    await member.roles.add(gc.verification.roleId);
+
+    if (gc.verification.unverifiedRoleId) {
+      await member.roles.remove(gc.verification.unverifiedRoleId).catch(() => {});
+    }
+
+    return interaction.reply({
+      embeds: [embed(
+        '#2ed573',
+        '✅ Zweryfikowano!',
+        `Witaj na **${interaction.guild.name}**! Masz teraz pełny dostęp do serwera. 🔥`
+      )],
+      flags: MessageFlags.Ephemeral
+    });
+
+  } catch (err) {
+    console.error('Verify error:', err);
+
+    return interaction.reply({
+      content: '❌ Wystąpił błąd podczas weryfikacji.',
+      flags: MessageFlags.Ephemeral
+    });
+  }
+}
   // ── Ticket Open ──
   if (interaction.customId === 'ticket_open') {
     if (!gc.tickets.enabled) {
@@ -4358,106 +4108,86 @@ function startDashboard() {
   app.post('/api/config/:guildId', requireAuth, async (req, res) => {
     const { guildId } = req.params;
 
-    try {
-      if (!hasAdminOnGuild(req, guildId)) {
-        return res.status(403).json({ error: 'Brak uprawnień' });
-      }
+    if (!hasAdminOnGuild(req, guildId)) {
+      return res.status(403).json({ error: 'Brak uprawnień' });
+    }
 
-      const guild = client.guilds.cache.get(guildId);
-      if (!guild) {
-        return res.status(404).json({ error: 'Bot nie jest na tym serwerze' });
-      }
+    const guild = client.guilds.cache.get(guildId);
+    if (!guild) {
+      return res.status(404).json({ error: 'Bot nie jest na tym serwerze' });
+    }
 
-      if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
-        return res.status(400).json({ error: 'Nieprawidłowe dane JSON' });
-      }
+    const gc = getGuildConfig(guildId);
+    const allowed = [
+      'antispam',
+      'antiraid',
+      'antiscam',
+      'channelGuard',
+      'verification',
+      'tickets',
+      'modLog',
+      'antialt',
+      'emergency',
+      'securityIgnore',
+      'appeals',
+    ];
 
-      await guild.channels.fetch().catch(() => {});
-      await guild.roles.fetch().catch(() => {});
+    for (const key of allowed) {
+      if (req.body[key]) Object.assign(gc[key], req.body[key]);
+    }
 
-      const gc = getGuildConfig(guildId);
-      const allowed = [
-        'antispam', 'antiraid', 'antiscam', 'channelGuard',
-        'verification', 'tickets', 'modLog', 'antialt',
-        'emergency', 'securityIgnore', 'appeals',
-      ];
+    const actions = req.body.actions || {};
 
-      for (const key of allowed) {
-        const incoming = req.body[key];
-        if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) continue;
-        if (!gc[key] || typeof gc[key] !== 'object' || Array.isArray(gc[key])) gc[key] = {};
-        Object.assign(gc[key], incoming);
-      }
-
-      const actions = req.body.actions && typeof req.body.actions === 'object'
-        ? req.body.actions
-        : {};
-
-      if (req.body.antiraid?.lockdownActive !== undefined) {
-        const lockdownActive = Boolean(req.body.antiraid.lockdownActive);
-        let failed = 0;
-        for (const [, ch] of guild.channels.cache) {
-          if (ch.type !== ChannelType.GuildText) continue;
+    if (req.body.antiraid?.lockdownActive !== undefined) {
+      for (const [, ch] of guild.channels.cache) {
+        if (ch.type === ChannelType.GuildText) {
           await ch.permissionOverwrites.edit(guild.roles.everyone, {
-            SendMessages: lockdownActive ? false : null,
-          }).catch(err => {
-            failed++;
-            console.error(`Dashboard lockdown: nie udało się zmienić #${ch.name}:`, err.message);
-          });
-        }
-        if (failed) console.warn(`Dashboard lockdown: ${failed} kanałów nie zostało zaktualizowanych.`);
-      }
-
-      if (actions.sendVerificationPanel) {
-        const channelId = gc.verification?.channelId;
-        const ch = channelId ? await guild.channels.fetch(channelId).catch(() => null) : null;
-        if (!ch || !ch.isTextBased?.()) {
-          return res.status(400).json({ error: 'Wybierz prawidłowy kanał panelu weryfikacji' });
-        }
-        await sendVerifyPanel(ch);
-      }
-
-      if (actions.sendTicketPanel) {
-        const channelId = gc.tickets?.panelChannelId || gc.tickets?.logChannelId;
-        const ch = channelId ? await guild.channels.fetch(channelId).catch(() => null) : null;
-        if (!ch || !ch.isTextBased?.()) {
-          return res.status(400).json({ error: 'Wybierz prawidłowy kanał panelu ticketów' });
-        }
-        await sendTicketPanel(ch);
-      }
-
-      saveConfig();
-
-      const logChannelId =
-        gc.modLog?.channelId || gc.antiraid?.logChannel || gc.antispam?.logChannel ||
-        gc.antiscam?.logChannel || gc.channelGuard?.logChannel;
-
-      if (logChannelId) {
-        const logCh = await guild.channels.fetch(logChannelId).catch(() => null);
-        if (logCh?.isTextBased?.()) {
-          await logCh.send({
-            embeds: [embed(
-              '#2ed573',
-              '⚙️ Dashboard zaktualizowany',
-              'Ustawienia serwera zostały zmienione przez panel WWW.',
-              [
-                { name: 'AntiSpam', value: gc.antispam?.enabled ? '✅ Włączony' : '❌ Wyłączony', inline: true },
-                { name: 'AntiRaid', value: gc.antiraid?.enabled ? '✅ Włączony' : '❌ Wyłączony', inline: true },
-                { name: 'Channel Guard', value: gc.channelGuard?.blockNewChannels ? '✅ Aktywny' : '❌ Wyłączony', inline: true },
-              ]
-            )],
+            SendMessages: req.body.antiraid.lockdownActive ? false : null,
           }).catch(() => {});
         }
       }
-
-      return res.json({ success: true, config: gc });
-    } catch (err) {
-      console.error(`Dashboard config save error (${guildId}):`, err);
-      return res.status(500).json({
-        error: 'Nie udało się zapisać ustawień',
-        details: process.env.NODE_ENV === 'production' ? undefined : err.message,
-      });
     }
+
+    if (actions.sendVerificationPanel) {
+      const channelId = gc.verification.channelId;
+      const ch = channelId ? await guild.channels.fetch(channelId).catch(() => null) : null;
+      if (ch) await sendVerifyPanel(ch).catch(console.error);
+    }
+
+    if (actions.sendTicketPanel) {
+      const channelId = gc.tickets.panelChannelId || gc.tickets.logChannelId;
+      const ch = channelId ? await guild.channels.fetch(channelId).catch(() => null) : null;
+      if (ch) await sendTicketPanel(ch).catch(console.error);
+    }
+
+    saveConfig();
+
+    const logChannelId =
+      gc.modLog?.channelId ||
+      gc.antiraid?.logChannel ||
+      gc.antispam?.logChannel ||
+      gc.antiscam?.logChannel ||
+      gc.channelGuard?.logChannel;
+
+    if (logChannelId) {
+      const logCh = await guild.channels.fetch(logChannelId).catch(() => null);
+      if (logCh) {
+        await logCh.send({
+          embeds: [embed(
+            '#2ed573',
+            '⚙️ Dashboard zaktualizowany',
+            'Ustawienia serwera zostały zmienione przez panel WWW.',
+            [
+              { name: 'AntiSpam', value: gc.antispam.enabled ? '✅ Włączony' : '❌ Wyłączony', inline: true },
+              { name: 'AntiRaid', value: gc.antiraid.enabled ? '✅ Włączony' : '❌ Wyłączony', inline: true },
+              { name: 'Channel Guard', value: gc.channelGuard.blockNewChannels ? '✅ Aktywny' : '❌ Wyłączony', inline: true },
+            ]
+          )],
+        }).catch(() => {});
+      }
+    }
+
+    return res.json({ success: true, config: gc });
   });
 
   app.post('/api/mod/:guildId/warn', requireAuth, async (req, res) => {
