@@ -169,7 +169,6 @@ verification: {
   roleId: null,
   unverifiedRoleId: null,
   channelId: null,
-  languageRoles: {},
 },
 
 reactionRoles: {
@@ -329,8 +328,9 @@ function isStaffMember(member, gc) {
 }
 
 function requireSecurityPermission(interaction, gc) {
-  if (isStaffMember(interaction.member, gc)) return null;
-  return interaction.reply({ content: '❌ Brak uprawnień do tej komendy.', flags: MessageFlags.Ephemeral });
+  // Komendy są publiczne na wszystkich serwerach poza oficjalnym supportem.
+  // Ograniczenie supportu jest obsługiwane centralnie w handlerze slash commandów.
+  return null;
 }
 
 function getAccountAgeDays(user) {
@@ -586,7 +586,7 @@ async function ensureVerificationForAntiAlt(guild, gc) {
         await ch.permissionOverwrites.edit(unverifiedRole, {
           ViewChannel: true,
           ReadMessageHistory: true,
-          SendMessages: false,
+          SendMessages: true,
         }).catch(() => {});
       } else {
         await ch.permissionOverwrites.edit(unverifiedRole, {
@@ -1990,15 +1990,22 @@ client.on('interactionCreate', async (interaction) => {
 
   const SUPPORT_GUILD_ID = process.env.SUPPORT_GUILD_ID || '1492793536930910310';
   const OWNER_ID = process.env.OWNER_ID || '1075478964505677824';
+  const DEVELOPER_ROLE_ID = process.env.DEVELOPER_ROLE_ID || '1514607845872631868';
 
-  if (
-    interaction.guild.id === SUPPORT_GUILD_ID &&
-    interaction.user.id !== OWNER_ID
-  ) {
-    return interaction.reply({
-      content: '❌ Na oficjalnym serwerze supportowym tylko właściciel bota może używać komend.',
-      flags: MessageFlags.Ephemeral
-    });
+  // Na oficjalnym serwerze supportowym komendy są tylko dla Ownera,
+  // Administratorów oraz osób z rolą Developer.
+  // Na każdym innym serwerze wszystkie komendy są dostępne dla każdego użytkownika.
+  if (interaction.guild.id === SUPPORT_GUILD_ID) {
+    const isOwner = interaction.user.id === OWNER_ID;
+    const isAdministrator = interaction.member?.permissions?.has(PermissionFlagsBits.Administrator) || false;
+    const isDeveloper = DEVELOPER_ROLE_ID && interaction.member?.roles?.cache?.has(DEVELOPER_ROLE_ID);
+
+    if (!isOwner && !isAdministrator && !isDeveloper) {
+      return interaction.reply({
+        content: '❌ Na oficjalnym serwerze supportowym komend mogą używać tylko Owner, Administrator i Developer.',
+        flags: MessageFlags.Ephemeral,
+      });
+    }
   }
 
   const gc = getGuildConfig(interaction.guild.id);
@@ -2213,9 +2220,6 @@ if (commandName === 'help') {
 
   // ── antialt ─────────────────────────────────────────────────────────
   if (commandName === 'antialt') {
-    const perm = requireSecurityPermission(interaction, gc);
-    if (perm) return perm;
-
     const sub = interaction.options.getSubcommand();
     if (!gc.antialt) gc.antialt = { enabled: false, minAccountAgeDays: 7, action: 'verify', logChannel: null, riskPoints: 20 };
 
@@ -2268,9 +2272,6 @@ if (commandName === 'help') {
 
   // ── risk ─────────────────────────────────────────────────────────────
   if (commandName === 'risk') {
-    const perm = requireSecurityPermission(interaction, gc);
-    if (perm) return perm;
-
     const user = interaction.options.getUser('uzytkownik') || interaction.user;
     const data = getUserRiskData(gc, user.id);
     const level = getRiskLevel(data.score);
@@ -2379,9 +2380,6 @@ if (commandName === 'help') {
 
   // ── securityignore ───────────────────────────────────────────────────
   if (commandName === 'securityignore') {
-    const perm = requireSecurityPermission(interaction, gc);
-    if (perm) return perm;
-
     const sub = interaction.options.getSubcommand();
     const ignore = ensureSecurityIgnore(gc);
 
@@ -2421,9 +2419,6 @@ if (commandName === 'help') {
 
   // ── backup ───────────────────────────────────────────────────────────
   if (commandName === 'backup') {
-    if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      return interaction.reply({ content: '❌ Tylko administrator może używać backupów.', flags: MessageFlags.Ephemeral });
-    }
     const sub = interaction.options.getSubcommand();
     if (!gc.backups) gc.backups = {};
 
@@ -2460,8 +2455,6 @@ if (commandName === 'help') {
     const appeals = ensureAppeals(gc);
 
     if (sub === 'setup') {
-      const perm = requireSecurityPermission(interaction, gc);
-      if (perm) return perm;
       const channel = interaction.options.getChannel('kanal');
       appeals.enabled = true;
       appeals.channelId = channel.id;
@@ -2495,8 +2488,6 @@ if (commandName === 'help') {
     }
 
     if (sub === 'review') {
-      const perm = requireSecurityPermission(interaction, gc);
-      if (perm) return perm;
       const id = interaction.options.getString('id');
       const a = appeals.cases[id];
       if (!a) return interaction.reply({ content: '❌ Nie znaleziono appeala.', flags: MessageFlags.Ephemeral });
@@ -2510,10 +2501,6 @@ if (commandName === 'help') {
 
   // ── emergency ────────────────────────────────────────────────────────
   if (commandName === 'emergency') {
-    if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      return interaction.reply({ content: '❌ Tylko administrator może użyć Emergency Mode.', flags: MessageFlags.Ephemeral });
-    }
-
     const sub = interaction.options.getSubcommand();
     if (!gc.emergency) gc.emergency = { active: false, previous: null };
 
@@ -2558,15 +2545,6 @@ if (commandName === 'help') {
 
   // ── refreshbot ────────────────────────────────────────────────────────
   if (commandName === 'refreshbot') {
-    const OWNER_ID = process.env.OWNER_ID || '1075478964505677824';
-
-    if (interaction.user.id !== OWNER_ID) {
-      return interaction.reply({
-        content: '❌ Tylko właściciel bota może użyć tej komendy.',
-        flags: MessageFlags.Ephemeral,
-      });
-    }
-
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     let refreshed = 0;
@@ -2614,13 +2592,6 @@ if (commandName === 'help') {
 
   // ── ocrscan ───────────────────────────────────────────────────────────
   if (commandName === 'ocrscan') {
-    if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
-      return interaction.reply({
-        content: '❌ Potrzebujesz uprawnienia Zarządzanie serwerem, aby zmieniać OCR AntiScam.',
-        flags: MessageFlags.Ephemeral,
-      });
-    }
-
     const sub = interaction.options.getSubcommand();
     if (!gc.antiscam) gc.antiscam = defaultGuildConfig().antiscam;
 
@@ -3051,13 +3022,6 @@ if (commandName === 'antiraid') {
   if (commandName === 'verification') {
     const sub = interaction.options.getSubcommand();
 
-    if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
-      return interaction.reply({
-        content: '❌ Potrzebujesz uprawnienia **Zarządzanie serwerem**.',
-        flags: MessageFlags.Ephemeral,
-      });
-    }
-
     if (sub === 'setup') {
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
@@ -3120,7 +3084,7 @@ if (commandName === 'antiraid') {
           interaction.guild,
           category,
           '✅│weryfikacja',
-          [{ id: interaction.guild.roles.everyone.id, allow: [PermissionFlagsBits.ViewChannel], deny: [PermissionFlagsBits.SendMessages] }]
+          [{ id: interaction.guild.roles.everyone.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] }]
         );
         gc.verification.channelId = verifyChannel.id;
       }
@@ -3234,22 +3198,6 @@ if (commandName === 'antiraid') {
   // ── botserver ──────────────────────────────────────────────────
   if (commandName === 'botserver') {
     const sub = interaction.options.getSubcommand();
-    const SUPPORT_GUILD_ID = process.env.SUPPORT_GUILD_ID || '1492793536930910310';
-
-    if (interaction.guild.id !== SUPPORT_GUILD_ID) {
-      return interaction.reply({
-        content: '❌ Ta komenda działa tylko na oficjalnym serwerze FenixExelent.',
-        flags: MessageFlags.Ephemeral,
-      });
-    }
-
-    if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      return interaction.reply({
-        content: '❌ Tylko administrator może użyć tej komendy.',
-        flags: MessageFlags.Ephemeral,
-      });
-    }
-
     if (sub === 'setup') {
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       await setupOfficialBotServer(interaction.guild);
@@ -3688,69 +3636,16 @@ Important security alerts and warnings will be posted here.`
 // ═══════════════════════════════════════════════════════════════════════════
 //  VERIFICATION PANEL
 // ═══════════════════════════════════════════════════════════════════════════
-const VERIFICATION_LANGUAGES = {
-  pl: { emoji: '🇵🇱', label: 'Polski', roleName: 'PL Polski' },
-  en: { emoji: '🇬🇧', label: 'English', roleName: 'GB English' },
-  tr: { emoji: '🇹🇷', label: 'Türkçe', roleName: 'TR Türkçe' },
-  de: { emoji: '🇩🇪', label: 'Deutsch', roleName: 'DE Deutsch' },
-  fr: { emoji: '🇫🇷', label: 'Français', roleName: 'FR Français' },
-};
-
-async function getOrCreateVerificationLanguageRole(guild, gc, code) {
-  const language = VERIFICATION_LANGUAGES[code];
-  if (!language) return null;
-
-  if (!gc.verification.languageRoles || typeof gc.verification.languageRoles !== 'object') {
-    gc.verification.languageRoles = {};
-  }
-
-  let role = gc.verification.languageRoles[code]
-    ? guild.roles.cache.get(gc.verification.languageRoles[code])
-    : null;
-
-  if (!role) {
-    role = guild.roles.cache.find(r =>
-      !r.managed && r.name.toLowerCase() === language.roleName.toLowerCase()
-    ) || null;
-  }
-
-  if (!role) {
-    role = await guild.roles.create({
-      name: language.roleName,
-      mentionable: false,
-      reason: `FenixExelent: rola językowa ${language.label}`,
-    }).catch(err => {
-      console.error(`Nie udało się utworzyć roli językowej ${language.roleName}:`, err);
-      return null;
-    });
-  }
-
-  if (role) {
-    gc.verification.languageRoles[code] = role.id;
-    saveConfig();
-  }
-
-  return role;
-}
-
 async function sendVerifyPanel(channel) {
+
   const verifyRow = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('verify_btn')
-      .setLabel('Verify / Zweryfikuj się')
-      .setEmoji('✅')
+      .setLabel('✅ Verify / Zweryfikuj się')
       .setStyle(ButtonStyle.Success)
   );
-
-  const languageRow = new ActionRowBuilder().addComponents(
-    ...Object.entries(VERIFICATION_LANGUAGES).map(([code, language]) =>
-      new ButtonBuilder()
-        .setCustomId(`verify_lang:${code}`)
-        .setLabel(language.label)
-        .setEmoji(language.emoji)
-        .setStyle(ButtonStyle.Primary)
-    )
-  );
+  const components = [verifyRow];
+  const extraDescription = '';
 
   await channel.send({
     embeds: [new EmbedBuilder()
@@ -3768,18 +3663,11 @@ Klikając przycisk, potwierdzasz akceptację zasad serwera.
 To access the server, click the button below.
 
 📜 Make sure you have read the rules.
-By clicking the button, you confirm that you accept the server rules.
-
-━━━━━━━━━━━━━━━━━━━━
-
-🌍 **Wybór języka / Language selection**
-Wybierz język poniżej, aby otrzymać odpowiednią rolę i dostęp do właściwego kanału supportu.
-
-Choose your language below to receive the correct role and access to the right support channel.`)
+By clicking the button, you confirm that you accept the server rules.${extraDescription}`)
       .setFooter({ text: 'FenixExelent 🔥' })
       .setTimestamp()
     ],
-    components: [verifyRow, languageRow],
+    components,
   });
 }
 
@@ -3952,52 +3840,6 @@ async function handleButton(interaction, gc) {
       aktywny ? '🔒 LOCKDOWN WŁĄCZONY' : '🔓 Lockdown wyłączony',
       aktywny ? 'Nikt nie może pisać.' : 'Serwer w normalnym trybie.'
     )], flags: MessageFlags.Ephemeral });
-  }
-
-  // ── Verification language selection ──
-  if (interaction.customId.startsWith('verify_lang:')) {
-    const code = interaction.customId.split(':')[1];
-    const language = VERIFICATION_LANGUAGES[code];
-
-    if (!language) {
-      return interaction.reply({ content: '❌ Nieznany język.', flags: MessageFlags.Ephemeral });
-    }
-
-    const botMember = interaction.guild.members.me || await interaction.guild.members.fetchMe().catch(() => null);
-    if (!botMember?.permissions.has(PermissionFlagsBits.ManageRoles)) {
-      return interaction.reply({
-        content: '❌ Bot nie ma uprawnienia **Zarządzanie rolami**.',
-        flags: MessageFlags.Ephemeral,
-      });
-    }
-
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    await interaction.guild.roles.fetch().catch(() => {});
-
-    const selectedRole = await getOrCreateVerificationLanguageRole(interaction.guild, gc, code);
-    if (!selectedRole) {
-      return interaction.editReply('❌ Nie udało się znaleźć ani utworzyć roli językowej.');
-    }
-
-    if (botMember.roles.highest.comparePositionTo(selectedRole) <= 0) {
-      return interaction.editReply(`❌ Rola bota musi znajdować się wyżej niż ${selectedRole}.`);
-    }
-
-    const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
-    if (!member) return interaction.editReply('❌ Nie udało się pobrać użytkownika.');
-
-    const languageRoleIds = Object.values(gc.verification.languageRoles || {}).filter(Boolean);
-    const rolesToRemove = languageRoleIds.filter(roleId => roleId !== selectedRole.id && member.roles.cache.has(roleId));
-
-    if (rolesToRemove.length) {
-      await member.roles.remove(rolesToRemove, 'FenixExelent: zmiana języka').catch(() => {});
-    }
-
-    if (!member.roles.cache.has(selectedRole.id)) {
-      await member.roles.add(selectedRole, `FenixExelent: wybrano język ${language.label}`).catch(() => null);
-    }
-
-    return interaction.editReply(`${language.emoji} Ustawiono język **${language.label}** i nadano rolę ${selectedRole}.`);
   }
 
   // ── Verification Button ──

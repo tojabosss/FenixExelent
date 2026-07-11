@@ -279,7 +279,6 @@ const rest = new REST({ version: '10' }).setToken(process.env.BOT_TOKEN);
 
 (async () => {
   const clientId = process.env.CLIENT_ID;
-  const guildId = process.env.GUILD_ID;
 
   if (!process.env.BOT_TOKEN) {
     console.error('❌ Brak BOT_TOKEN w .env!');
@@ -294,19 +293,11 @@ const rest = new REST({ version: '10' }).setToken(process.env.BOT_TOKEN);
   try {
     console.log(`🔄 Rejestruję ${commands.length} komend slash...`);
 
-    if (guildId) {
-      await rest.put(
-        Routes.applicationGuildCommands(clientId, guildId),
-        { body: commands }
-      );
-      console.log(`✅ Zarejestrowano ${commands.length} komend na serwerze ${guildId}`);
-    } else {
-      await rest.put(
-        Routes.applicationCommands(clientId),
-        { body: commands }
-      );
-      console.log(`✅ Zarejestrowano ${commands.length} komend globalnie`);
-    }
+    await rest.put(
+      Routes.applicationCommands(clientId),
+      { body: commands }
+    );
+    console.log(`✅ Zarejestrowano ${commands.length} komend globalnie`);
 
     commands.forEach((cmd, i) => {
       console.log(`${i + 1}. /${cmd.name}`);
