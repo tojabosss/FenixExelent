@@ -1,6 +1,4 @@
-from pathlib import Path
-
-dashboard_html = r'''<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pl">
 <head>
 <meta charset="UTF-8">
@@ -34,6 +32,21 @@ a{text-decoration:none;color:inherit}.app{display:grid;grid-template-columns:280
 .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}.toast{position:fixed;right:22px;bottom:22px;background:#052e16;border:1px solid #22c55e;color:#bbf7d0;padding:14px 18px;border-radius:14px;display:none;font-weight:900;z-index:99}
 .notice{background:rgba(245,158,11,.08);border:1px solid var(--line2);border-radius:16px;padding:14px;margin-bottom:16px;color:#fde68a}
 @media(max-width:1050px){.app{grid-template-columns:1fr}.sidebar{height:auto;position:relative}.stats,.grid,.form{grid-template-columns:1fr}.top{flex-direction:column;align-items:flex-start}}
+
+/* Verification panel — Member + Niezweryfikowany + języki */
+.verify-layout{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(320px,.9fr);gap:18px;align-items:start}
+.verify-preview{background:linear-gradient(180deg,#0b1226,#070b18);border:1px solid rgba(96,165,250,.25);border-radius:18px;padding:18px}
+.verify-discord{background:#2b2d31;border-radius:14px;padding:16px;color:#dbdee1;font-family:Arial,sans-serif}
+.verify-embed{border-left:4px solid #ff6b00;background:#1e1f22;border-radius:4px;padding:14px}
+.verify-embed-title{font-weight:800;color:#fff;font-size:17px;margin-bottom:10px}
+.verify-embed-text{font-size:14px;line-height:1.55;color:#dbdee1;white-space:pre-line}
+.verify-footer{font-size:12px;color:#949ba4;margin-top:12px}
+.verify-buttons{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.verify-buttons button{border:0;border-radius:7px;padding:10px 12px;font-weight:800;background:#5865f2;color:#fff}
+.verify-buttons .primary{background:#248046;width:100%}
+.field small{display:block;color:var(--muted);margin-top:7px;line-height:1.4}
+@media(max-width:1050px){.verify-layout{grid-template-columns:1fr}}
+
 </style>
 </head>
 <body>
@@ -112,12 +125,53 @@ a{text-decoration:none;color:inherit}.app{display:grid;grid-template-columns:280
     </div><div class="actions"><button class="btn" onclick="save()">💾 Zapisz</button></div>
   </section>
 
-  <section id="verify" class="panel"><div class="top"><div><h1>✅ Weryfikacja</h1><p>Wybierz rolę i kanał, potem kliknij „Wyślij panel”.</p></div></div>
-    <div class="form">
-      <div class="field"><label>Status</label><select id="vfEnabled"><option value="true">Włączona</option><option value="false">Wyłączona</option></select></div>
-      <div class="field"><label>Rola po weryfikacji</label><select id="vfRole"></select></div>
-      <div class="field"><label>Kanał panelu</label><select id="vfChannel"></select></div>
-    </div><div class="actions"><button class="btn" onclick="save()">💾 Zapisz</button><button class="btn secondary" onclick="sendVerify()">📤 Wyślij panel</button></div>
+  <section id="verify" class="panel">
+    <div class="top"><div><h1>✅ Weryfikacja</h1><p>Skonfiguruj role, kanał i wyślij aktualny panel z wyborem języka.</p></div></div>
+    <div class="notice">Po wejściu użytkownik dostaje rolę <b>Niezweryfikowany</b>. Po kliknięciu Verify bot ją usuwa i nadaje <b>Member</b>.</div>
+    <div class="verify-layout">
+      <div>
+        <div class="form">
+          <div class="field"><label>Status</label><select id="vfEnabled"><option value="true">Włączona</option><option value="false">Wyłączona</option></select></div>
+          <div class="field"><label>Rola po weryfikacji</label><select id="vfRole"></select><small>Najczęściej: @Member</small></div>
+          <div class="field"><label>Rola przed weryfikacją</label><select id="vfUnverifiedRole"></select><small>Najczęściej: @Niezweryfikowany</small></div>
+          <div class="field"><label>Kanał panelu</label><select id="vfChannel"></select></div>
+        </div>
+        <div class="actions">
+          <button class="btn" onclick="save()">💾 Zapisz</button>
+          <button class="btn secondary" onclick="sendVerify()">📤 Wyślij aktualny panel</button>
+          <button class="btn secondary" onclick="loadConfig()">↩ Odśwież dane</button>
+        </div>
+      </div>
+      <div class="verify-preview">
+        <h3 style="margin-top:0">Podgląd panelu Discord</h3>
+        <div class="verify-discord">
+          <div class="verify-embed">
+            <div class="verify-embed-title">✅ Weryfikacja / Verification — FenixExelent</div>
+            <div class="verify-embed-text">🇵🇱 <b>Polski</b>
+Aby uzyskać dostęp do serwera, kliknij przycisk poniżej.
+
+📜 Upewnij się, że przeczytałeś/aś regulamin.
+
+━━━━━━━━━━━━━━━━━━━━
+
+🇬🇧 <b>English</b>
+To access the server, click the button below.
+
+📜 Make sure you have read the rules.
+
+━━━━━━━━━━━━━━━━━━━━
+
+🌍 <b>Wybór języka / Language selection</b>
+Wybierz język, aby otrzymać odpowiednią rolę.</div>
+            <div class="verify-footer">FenixExelent 🔥 • teraz</div>
+          </div>
+          <div class="verify-buttons">
+            <button class="primary">✅ Verify / Zweryfikuj się</button>
+            <button>🇵🇱 Polski</button><button>🇬🇧 English</button><button>🇹🇷 Türkçe</button><button>🇩🇪 Deutsch</button><button>🇫🇷 Français</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </section>
 
   <section id="tickets" class="panel"><div class="top"><div><h1>🎫 Tickety</h1><p>Support, logi i panel otwierania ticketów.</p></div></div>
@@ -167,7 +221,7 @@ async function loadMeta(){
 function fill(sel,items,type){sel.innerHTML='<option value="">Brak / wybierz</option>';items.forEach(i=>{let o=document.createElement('option');o.value=i.id;o.textContent=(type==='role'?'@':'#')+i.name;sel.appendChild(o)})}
 function fillSelects(){
   [asLog,arLog,cgLog,vfChannel,tkLogs,tkChannel,modLog].forEach(s=>fill(s,meta.channels,'channel'));
-  [vfRole,tkRole].forEach(s=>fill(s,meta.roles,'role'));
+  [vfRole,vfUnverifiedRole,tkRole].forEach(s=>fill(s,meta.roles,'role'));
 }
 async function loadConfig(){
   if(!selectedGuild)return;
@@ -176,7 +230,7 @@ async function loadConfig(){
   asEnabled.value=String(c.antispam.enabled); asMax.value=c.antispam.maxMessages; asTime.value=c.antispam.interval/1000; asMute.value=c.antispam.muteMinutes; asLog.value=c.antispam.logChannel||'';
   arEnabled.value=String(c.antiraid.enabled); arJoins.value=c.antiraid.joinThreshold; arTime.value=c.antiraid.joinInterval/1000; arAction.value=c.antiraid.action; arLock.value=String(c.antiraid.lockdownActive); arLog.value=c.antiraid.logChannel||'';
   cgEnabled.value=String(c.channelGuard.enabled); cgBlock.value=String(c.channelGuard.blockNewChannels); cgLog.value=c.channelGuard.logChannel||'';
-  vfEnabled.value=String(c.verification.enabled); vfRole.value=c.verification.roleId||''; vfChannel.value=c.verification.channelId||'';
+  vfEnabled.value=String(c.verification.enabled); vfRole.value=c.verification.roleId||c.verification.verifiedRoleId||''; vfUnverifiedRole.value=c.verification.unverifiedRoleId||''; vfChannel.value=c.verification.channelId||'';
   tkEnabled.value=String(c.tickets.enabled); tkRole.value=c.tickets.supportRoleId||''; tkLogs.value=c.tickets.logChannelId||''; tkChannel.value=c.tickets.panelChannelId||'';
   modLog.value=c.modLog?.channelId||'';
   setBadge(bAS,c.antispam.enabled);setBadge(bAR,c.antiraid.enabled);setBadge(bCG,c.channelGuard.blockNewChannels);setBadge(bVF,c.verification.enabled);setBadge(bTK,c.tickets.enabled);
@@ -186,7 +240,7 @@ function body(extra={}){
     antispam:{enabled:bool(asEnabled.value),maxMessages:+asMax.value,interval:+asTime.value*1000,muteMinutes:+asMute.value,logChannel:asLog.value||null},
     antiraid:{enabled:bool(arEnabled.value),joinThreshold:+arJoins.value,joinInterval:+arTime.value*1000,action:arAction.value,lockdownActive:bool(arLock.value),logChannel:arLog.value||null},
     channelGuard:{enabled:bool(cgEnabled.value),blockNewChannels:bool(cgBlock.value),logChannel:cgLog.value||null},
-    verification:{enabled:bool(vfEnabled.value),roleId:vfRole.value||null,channelId:vfChannel.value||null},
+    verification:{enabled:bool(vfEnabled.value),roleId:vfRole.value||null,verifiedRoleId:vfRole.value||null,unverifiedRoleId:vfUnverifiedRole.value||null,channelId:vfChannel.value||null},
     tickets:{enabled:bool(tkEnabled.value),supportRoleId:tkRole.value||null,logChannelId:tkLogs.value||null,panelChannelId:tkChannel.value||null},
     modLog:{channelId:modLog.value||null},
     actions: extra
@@ -203,99 +257,4 @@ async function refresh(){await loadConfig();const r=await fetch('/api/stats');if
 loadMe();
 </script>
 </body>
-</html>'''
-
-backend_patch = r'''// WKLEJ W index.js WEWNĄTRZ function startDashboard()
-// 1) Dodaj ten endpoint przed app.get('/api/config/:guildId', ...)
-
-app.get('/api/guild/:guildId/meta', requireAuth, async (req, res) => {
-  const { guildId } = req.params;
-  if (!hasAdminOnGuild(req, guildId)) return res.status(403).json({ error: 'Brak uprawnień' });
-
-  const guild = client.guilds.cache.get(guildId);
-  if (!guild) return res.status(404).json({ error: 'Bot nie jest na tym serwerze' });
-
-  await guild.channels.fetch().catch(() => {});
-  await guild.roles.fetch().catch(() => {});
-
-  const channels = guild.channels.cache
-    .filter(ch => ch.type === ChannelType.GuildText)
-    .map(ch => ({ id: ch.id, name: ch.name }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-
-  const roles = guild.roles.cache
-    .filter(r => !r.managed && r.id !== guild.roles.everyone.id)
-    .map(r => ({ id: r.id, name: r.name }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-
-  res.json({ channels, roles });
-});
-
-// 2) ZAMIEŃ cały stary app.post('/api/config/:guildId'...) na ten:
-
-app.post('/api/config/:guildId', requireAuth, async (req, res) => {
-  const { guildId } = req.params;
-  if (!hasAdminOnGuild(req, guildId)) return res.status(403).json({ error: 'Brak uprawnień' });
-
-  const guild = client.guilds.cache.get(guildId);
-  if (!guild) return res.status(404).json({ error: 'Bot nie jest na tym serwerze' });
-
-  const gc = getGuildConfig(guildId);
-  const allowed = ['antispam', 'antiraid', 'channelGuard', 'verification', 'tickets', 'modLog'];
-
-  for (const key of allowed) {
-    if (req.body[key]) Object.assign(gc[key], req.body[key]);
-  }
-
-  const actions = req.body.actions || {};
-
-  if (req.body.antiraid?.lockdownActive !== undefined) {
-    for (const [, ch] of guild.channels.cache) {
-      if (ch.type === ChannelType.GuildText) {
-        await ch.permissionOverwrites.edit(guild.roles.everyone, {
-          SendMessages: req.body.antiraid.lockdownActive ? false : null,
-        }).catch(() => {});
-      }
-    }
-  }
-
-  if (actions.sendVerificationPanel) {
-    const channelId = gc.verification.channelId;
-    const ch = channelId ? await guild.channels.fetch(channelId).catch(() => null) : null;
-    if (ch) await sendVerifyPanel(ch).catch(console.error);
-  }
-
-  if (actions.sendTicketPanel) {
-    const channelId = gc.tickets.panelChannelId || gc.tickets.logChannelId;
-    const ch = channelId ? await guild.channels.fetch(channelId).catch(() => null) : null;
-    if (ch) await sendTicketPanel(ch).catch(console.error);
-  }
-
-  saveConfig();
-
-  const logChannelId = gc.modLog?.channelId || gc.antiraid?.logChannel || gc.antispam?.logChannel || gc.channelGuard?.logChannel;
-  if (logChannelId) {
-    const logCh = await guild.channels.fetch(logChannelId).catch(() => null);
-    if (logCh) {
-      await logCh.send({
-        embeds: [embed(
-          '#2ed573',
-          '⚙️ Dashboard zaktualizowany',
-          'Ustawienia serwera zostały zmienione przez panel WWW.',
-          [
-            { name: 'AntiSpam', value: gc.antispam.enabled ? '✅ Włączony' : '❌ Wyłączony', inline: true },
-            { name: 'AntiRaid', value: gc.antiraid.enabled ? '✅ Włączony' : '❌ Wyłączony', inline: true },
-            { name: 'Channel Guard', value: gc.channelGuard.blockNewChannels ? '✅ Aktywny' : '❌ Wyłączony', inline: true },
-          ]
-        )]
-      }).catch(() => {});
-    }
-  }
-
-  res.json({ success: true, config: gc });
-});'''
-
-Path('/mnt/data/dashboard-probot-mee6.html').write_text(dashboard_html, encoding='utf-8')
-Path('/mnt/data/indexjs-dashboard-backend-patch.js').write_text(backend_patch, encoding='utf-8')
-print('/mnt/data/dashboard-probot-mee6.html')
-print('/mnt/data/indexjs-dashboard-backend-patch.js')
+</html>
