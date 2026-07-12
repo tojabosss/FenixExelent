@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="pl">
 <head>
 <meta charset="UTF-8">
@@ -83,6 +83,22 @@ a{text-decoration:none;color:inherit}.app{display:grid;grid-template-columns:280
   margin-left:4px !important;
 }
 
+
+/* Verification panel v2 */
+.verify-layout{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(320px,.85fr);gap:18px;align-items:start}
+.verify-preview{background:linear-gradient(180deg,#0b1226,#070b18);border:1px solid rgba(96,165,250,.25);border-radius:18px;padding:18px;position:sticky;top:20px}
+.verify-discord{background:#2b2d31;border-radius:14px;padding:16px;color:#dbdee1;font-family:Arial,sans-serif}
+.verify-embed{border-left:4px solid #f59e0b;background:#1e1f22;border-radius:4px;padding:14px 14px 12px}
+.verify-embed-title{font-weight:800;color:#fff;font-size:17px;margin-bottom:10px}
+.verify-embed-text{font-size:14px;line-height:1.55;color:#dbdee1;white-space:pre-line}
+.verify-footer{font-size:12px;color:#949ba4;margin-top:12px}
+.verify-buttons{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.verify-buttons button{border:0;border-radius:4px;padding:10px 8px;font-weight:700;background:#4e5058;color:#fff}
+.verify-buttons .primary{grid-column:1/-1;background:#248046}
+.verify-help{margin-top:12px;color:var(--muted);font-size:13px;line-height:1.5}
+.field small{display:block;color:var(--muted);margin-top:7px;line-height:1.45}
+@media(max-width:1050px){.verify-layout{grid-template-columns:1fr}.verify-preview{position:static}}
+
 </style>
 </head>
 <body>
@@ -165,12 +181,94 @@ a{text-decoration:none;color:inherit}.app{display:grid;grid-template-columns:280
     </div><div class="actions"><button class="btn" onclick="save()">💾 Zapisz</button></div>
   </section>
 
-  <section id="verify" class="panel"><div class="top"><div><h1>✅ Weryfikacja</h1><p>Wybierz rolę i kanał, potem kliknij „Wyślij panel”.</p></div></div>
-    <div class="form">
-      <div class="field"><label>Status</label><select id="vfEnabled"><option value="true">Włączona</option><option value="false">Wyłączona</option></select></div>
-      <div class="field"><label>Rola po weryfikacji</label><select id="vfRole"></select></div>
-      <div class="field"><label>Kanał panelu</label><select id="vfChannel"></select></div>
-    </div><div class="actions"><button class="btn" onclick="save()">💾 Zapisz</button><button class="btn secondary" onclick="sendVerify()">📤 Wyślij panel</button></div>
+  <section id="verify" class="panel">
+    <div class="top">
+      <div>
+        <h1>✅ Weryfikacja</h1>
+        <p>Profesjonalny panel: nowy użytkownik otrzymuje rolę „Niezweryfikowany”, a po kliknięciu przycisku rolę „Member”.</p>
+      </div>
+    </div>
+
+    <div class="notice">
+      Bot musi mieć uprawnienie <b>Zarządzanie rolami</b>, a jego rola musi znajdować się wyżej niż role Member, Niezweryfikowany i role językowe.
+    </div>
+
+    <div class="verify-layout">
+      <div>
+        <div class="form">
+          <div class="field">
+            <label>Status systemu</label>
+            <select id="vfEnabled">
+              <option value="true">Włączona</option>
+              <option value="false">Wyłączona</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label>Rola po weryfikacji</label>
+            <select id="vfRole"></select>
+            <small>Najczęściej: <b>Member</b>. Ta rola zostanie nadana po kliknięciu „Verify”.</small>
+          </div>
+
+          <div class="field">
+            <label>Rola przed weryfikacją</label>
+            <select id="vfUnverifiedRole"></select>
+            <small>Najczęściej: <b>Niezweryfikowany</b>. Bot nada ją automatycznie po wejściu użytkownika.</small>
+          </div>
+
+          <div class="field">
+            <label>Kanał panelu</label>
+            <select id="vfChannel"></select>
+            <small>Na tym kanale bot wyśle panel z przyciskiem weryfikacji i wyborem języka.</small>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button class="btn" onclick="save()">💾 Zapisz ustawienia</button>
+          <button class="btn secondary" onclick="sendVerify()">📤 Wyślij nowy panel</button>
+          <button class="btn secondary" onclick="loadConfig()">↩ Wczytaj ponownie</button>
+        </div>
+
+        <div class="verify-help">
+          <b>Jak działa system:</b><br>
+          1. Użytkownik wchodzi na serwer i dostaje rolę Niezweryfikowany.<br>
+          2. Kliknięcie przycisku Verify usuwa tę rolę i nadaje Member.<br>
+          3. Przyciski językowe pozwalają wybrać jedną rolę językową.
+        </div>
+      </div>
+
+      <div class="verify-preview">
+        <h3 style="margin-top:0">Podgląd panelu Discord</h3>
+        <div class="verify-discord">
+          <div class="verify-embed">
+            <div class="verify-embed-title">✅ Weryfikacja / Verification — FenixExelent</div>
+            <div class="verify-embed-text">🇵🇱 <b>Polski</b>
+Aby uzyskać dostęp do serwera, kliknij przycisk poniżej.
+
+📜 Upewnij się, że przeczytałeś/aś regulamin.
+Klikając przycisk, potwierdzasz akceptację zasad serwera.
+
+━━━━━━━━━━━━━━━━━━━━
+
+🇬🇧 <b>English</b>
+To access the server, click the button below.
+
+📜 Make sure you have read the rules.
+By clicking the button, you confirm that you accept the server rules.</div>
+            <div class="verify-footer">FenixExelent 🔥 • teraz</div>
+          </div>
+
+          <div class="verify-buttons">
+            <button class="primary">✅ Verify / Zweryfikuj się</button>
+            <button>🇵🇱 Polski</button>
+            <button>🇬🇧 English</button>
+            <button>🇹🇷 Türkçe</button>
+            <button>🇩🇪 Deutsch</button>
+            <button style="grid-column:1/-1">🇫🇷 Français</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </section>
 
   <section id="tickets" class="panel"><div class="top"><div><h1>🎫 Tickety</h1><p>Support, logi i panel otwierania ticketów.</p></div></div>
@@ -241,7 +339,7 @@ async function loadMeta(){
 function fill(sel,items,type){sel.innerHTML='<option value="">Brak / wybierz</option>';items.forEach(i=>{let o=document.createElement('option');o.value=i.id;o.textContent=(type==='role'?'@':'#')+i.name;sel.appendChild(o)})}
 function fillSelects(){
   [asLog,arLog,cgLog,vfChannel,tkLogs,tkChannel,modLog,aaLog,appealChannel,ignoreChannel].forEach(s=>fill(s,meta.channels,'channel'));
-  [vfRole,tkRole].forEach(s=>fill(s,meta.roles,'role'));
+  [vfRole,vfUnverifiedRole,tkRole].forEach(s=>fill(s,meta.roles,'role'));
 }
 async function loadConfig(){
   if(!selectedGuild)return;
@@ -250,7 +348,7 @@ async function loadConfig(){
   asEnabled.value=String(c.antispam.enabled); asMax.value=c.antispam.maxMessages; asTime.value=c.antispam.interval/1000; asMute.value=c.antispam.muteMinutes; asLog.value=c.antispam.logChannel||'';
   arEnabled.value=String(c.antiraid.enabled); arJoins.value=c.antiraid.joinThreshold; arTime.value=c.antiraid.joinInterval/1000; arAction.value=c.antiraid.action; arLock.value=String(c.antiraid.lockdownActive); arLog.value=c.antiraid.logChannel||'';
   cgEnabled.value=String(c.channelGuard.enabled); cgBlock.value=String(c.channelGuard.blockNewChannels); cgLog.value=c.channelGuard.logChannel||'';
-  vfEnabled.value=String(c.verification.enabled); vfRole.value=c.verification.roleId||''; vfChannel.value=c.verification.channelId||'';
+  vfEnabled.value=String(c.verification.enabled); vfRole.value=c.verification.roleId||c.verification.verifiedRoleId||''; vfUnverifiedRole.value=c.verification.unverifiedRoleId||''; vfChannel.value=c.verification.channelId||'';
   tkEnabled.value=String(c.tickets.enabled); tkRole.value=c.tickets.supportRoleId||''; tkLogs.value=c.tickets.logChannelId||''; tkChannel.value=c.tickets.panelChannelId||'';
   modLog.value=c.modLog?.channelId||'';
   scEnabled.value=String(c.antiscam?.enabled ?? true);
@@ -269,7 +367,7 @@ function body(extra={}){
     antispam:{enabled:bool(asEnabled.value),maxMessages:+asMax.value,interval:+asTime.value*1000,muteMinutes:+asMute.value,logChannel:asLog.value||null},
     antiraid:{enabled:bool(arEnabled.value),joinThreshold:+arJoins.value,joinInterval:+arTime.value*1000,action:arAction.value,lockdownActive:bool(arLock.value),logChannel:arLog.value||null},
     channelGuard:{enabled:bool(cgEnabled.value),blockNewChannels:bool(cgBlock.value),logChannel:cgLog.value||null},
-    verification:{enabled:bool(vfEnabled.value),roleId:vfRole.value||null,channelId:vfChannel.value||null},
+    verification:{enabled:bool(vfEnabled.value),roleId:vfRole.value||null,verifiedRoleId:vfRole.value||null,unverifiedRoleId:vfUnverifiedRole.value||null,channelId:vfChannel.value||null},
     tickets:{enabled:bool(tkEnabled.value),supportRoleId:tkRole.value||null,logChannelId:tkLogs.value||null,panelChannelId:tkChannel.value||null},
     modLog:{channelId:modLog.value||null},
     antiscam:{enabled:bool(scEnabled.value),ocrScamImages:bool(ocrEnabled.value),blockImageOnlyScamScreenshots:bool(ocrStrict.value)},
