@@ -8,74 +8,6 @@ const commands = [
   new SlashCommandBuilder().setName('security').setDescription('🛡️ Panel bezpieczeństwa'),
   new SlashCommandBuilder().setName('status').setDescription('📊 Status modułów bota'),
   new SlashCommandBuilder().setName('stats').setDescription('🔄 Odśwież statystyki serwera'),
-  new SlashCommandBuilder().setName('refreshbot').setDescription('🔄 Odśwież bota, config i statystyki na wszystkich serwerach'),
-
-  new SlashCommandBuilder().setName('privacy').setDescription('🔐 Link do Privacy Policy'),
-  new SlashCommandBuilder().setName('terms').setDescription('📜 Link do Terms of Service'),
-  new SlashCommandBuilder().setName('about').setDescription('ℹ️ Informacje o bocie'),
-  new SlashCommandBuilder().setName('support').setDescription('🆘 Link do supportu'),
-  new SlashCommandBuilder().setName('servercheck').setDescription('🧪 Sprawdź Security Score serwera'),
-
-
-  new SlashCommandBuilder()
-    .setName('securityignore')
-    .setDescription('🧾 Ignorowane kanały/role dla automatycznych zabezpieczeń')
-    .addSubcommand(s => s.setName('channel').setDescription('Dodaj ignorowany kanał').addChannelOption(o => o.setName('kanal').setDescription('Kanał').setRequired(true)))
-    .addSubcommand(s => s.setName('role').setDescription('Dodaj ignorowaną rolę').addRoleOption(o => o.setName('rola').setDescription('Rola').setRequired(true)))
-    .addSubcommand(s => s.setName('removechannel').setDescription('Usuń ignorowany kanał').addChannelOption(o => o.setName('kanal').setDescription('Kanał').setRequired(true)))
-    .addSubcommand(s => s.setName('removerole').setDescription('Usuń ignorowaną rolę').addRoleOption(o => o.setName('rola').setDescription('Rola').setRequired(true)))
-    .addSubcommand(s => s.setName('list').setDescription('Pokaż ignorowane kanały i role')),
-
-  new SlashCommandBuilder()
-    .setName('backup')
-    .setDescription('📦 Backup serwera')
-    .addSubcommand(s => s.setName('create').setDescription('Utwórz backup ról, kanałów i ustawień'))
-    .addSubcommand(s => s.setName('list').setDescription('Pokaż backupy'))
-    .addSubcommand(s => s.setName('restore').setDescription('Przywróć brakujące role i kanały z backupu').addStringOption(o => o.setName('id').setDescription('ID backupu').setRequired(true))),
-
-  new SlashCommandBuilder()
-    .setName('appeal')
-    .setDescription('📝 System odwołań od kar')
-    .addSubcommand(s => s.setName('setup').setDescription('Ustaw kanał appeal').addChannelOption(o => o.setName('kanal').setDescription('Kanał appeali').setRequired(true)))
-    .addSubcommand(s => s.setName('submit').setDescription('Wyślij odwołanie').addStringOption(o => o.setName('powod').setDescription('Opisz, dlaczego kara powinna zostać zdjęta').setRequired(true).setMaxLength(1000)))
-    .addSubcommand(s => s.setName('review').setDescription('Sprawdź appeal po ID').addStringOption(o => o.setName('id').setDescription('ID appeala').setRequired(true))),
-
-  new SlashCommandBuilder()
-    .setName('antialt')
-    .setDescription('🆕 Ochrona przed świeżymi kontami Discord')
-    .addSubcommand(s => s.setName('on').setDescription('Włącz AntiAlt'))
-    .addSubcommand(s => s.setName('off').setDescription('Wyłącz AntiAlt'))
-    .addSubcommand(s => s
-      .setName('set')
-      .setDescription('Ustaw limit wieku konta')
-      .addIntegerOption(o => o.setName('mindays').setDescription('Minimalny wiek konta w dniach').setRequired(false).setMinValue(1).setMaxValue(365))
-      .addChannelOption(o => o.setName('logi').setDescription('Kanał logów AntiAlt').setRequired(false)))
-    .addSubcommand(s => s.setName('status').setDescription('Pokaż status AntiAlt')),
-
-  new SlashCommandBuilder()
-    .setName('reportscam')
-    .setDescription('🚨 Zgłoś scam link, domenę lub użytkownika')
-    .addStringOption(o => o.setName('link').setDescription('Podejrzany link lub domena').setRequired(false))
-    .addUserOption(o => o.setName('uzytkownik').setDescription('Podejrzany użytkownik').setRequired(false))
-    .addStringOption(o => o.setName('opis').setDescription('Krótki opis zgłoszenia').setRequired(false).setMaxLength(700)),
-
-  new SlashCommandBuilder()
-    .setName('emergency')
-    .setDescription('🚨 Tryb awaryjny serwera')
-    .addSubcommand(s => s.setName('on').setDescription('Włącz lockdown i mocniejsze zabezpieczenia'))
-    .addSubcommand(s => s.setName('off').setDescription('Wyłącz tryb awaryjny'))
-    .addSubcommand(s => s.setName('status').setDescription('Pokaż status trybu awaryjnego')),
-
-  new SlashCommandBuilder()
-    .setName('ocrscan')
-    .setDescription('👁️ OCR skan scam screenów')
-    .addSubcommand(s => s.setName('on').setDescription('Włącz OCR AntiScam dla screenów'))
-    .addSubcommand(s => s.setName('off').setDescription('Wyłącz OCR AntiScam dla screenów'))
-    .addSubcommand(s => s.setName('status').setDescription('Pokaż status OCR AntiScam'))
-    .addSubcommand(s => s
-      .setName('strict')
-      .setDescription('Włącz/wyłącz blokowanie samych obrazków bez tekstu')
-      .addBooleanOption(o => o.setName('aktywny').setDescription('true/false').setRequired(true))),
 
   new SlashCommandBuilder()
     .setName('modlog')
@@ -279,6 +211,7 @@ const rest = new REST({ version: '10' }).setToken(process.env.BOT_TOKEN);
 
 (async () => {
   const clientId = process.env.CLIENT_ID;
+  const guildId = process.env.GUILD_ID;
 
   if (!process.env.BOT_TOKEN) {
     console.error('❌ Brak BOT_TOKEN w .env!');
@@ -293,11 +226,19 @@ const rest = new REST({ version: '10' }).setToken(process.env.BOT_TOKEN);
   try {
     console.log(`🔄 Rejestruję ${commands.length} komend slash...`);
 
-    await rest.put(
-      Routes.applicationCommands(clientId),
-      { body: commands }
-    );
-    console.log(`✅ Zarejestrowano ${commands.length} komend globalnie`);
+    if (guildId) {
+      await rest.put(
+        Routes.applicationGuildCommands(clientId, guildId),
+        { body: commands }
+      );
+      console.log(`✅ Zarejestrowano ${commands.length} komend na serwerze ${guildId}`);
+    } else {
+      await rest.put(
+        Routes.applicationCommands(clientId),
+        { body: commands }
+      );
+      console.log(`✅ Zarejestrowano ${commands.length} komend globalnie`);
+    }
 
     commands.forEach((cmd, i) => {
       console.log(`${i + 1}. /${cmd.name}`);
@@ -307,3 +248,5 @@ const rest = new REST({ version: '10' }).setToken(process.env.BOT_TOKEN);
     process.exit(1);
   }
 })();
+
+

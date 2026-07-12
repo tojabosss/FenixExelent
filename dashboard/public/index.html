@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>FenixExelentSecurity – Ochrona Serwera Discord</title>
+<title>FenixExelent – Ochrona Serwera Discord</title>
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -90,21 +90,7 @@
   .nav-right { display: flex; align-items: center; gap: 1rem; }
 
   /* ── LANG DROPDOWN ── */
-  .lang-dropdown-wrap {
-    position: relative;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .lang-label {
-    color: var(--text-secondary);
-    font-family: var(--font-body);
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    white-space: nowrap;
-  }
+  .lang-dropdown-wrap { position: relative; }
   .lang-selected {
     background: transparent;
     border: 1px solid var(--border);
@@ -752,23 +738,6 @@
     .lang-bar { padding: 0 1.2rem; }
     section { padding: 4rem 1.2rem; }
   }
-.security-word{
-  color:#60a5fa;
-  margin-left:4px;
-}
-
-/* FenixExelentSecurity logo fix */
-.logo-text .logo-fenix{
-  color: var(--text-primary) !important;
-}
-.logo-text .logo-exelent{
-  color: var(--gold) !important;
-}
-.logo-text span.security-word{
-  color: var(--blue-light) !important;
-  margin-left: .16em;
-}
-
 </style>
 </head>
 <body>
@@ -784,7 +753,7 @@
         <path d="M20 14L24 20L20 26L16 20L20 14Z" fill="#3b82f6" opacity="0.7"/>
       </svg>
     </div>
-    <span class="logo-text"><span class="logo-fenix">Fenix</span><span class="logo-exelent">Exelent</span><span class="security-word">Security</span></span>
+    <span class="logo-text"><span>Fenix</span><span>Exelent</span></span>
   </a>
 
   <nav>
@@ -796,7 +765,6 @@
 
   <div class="nav-right">
     <div class="lang-dropdown-wrap">
-      <span class="lang-label">Language</span>
       <button class="lang-selected" id="langBtn" onclick="toggleLangMenu()">
         <span id="currentLangLabel">PL</span>
         <span class="lang-chevron" id="langChevron">▼</span>
@@ -1625,43 +1593,6 @@ function setLang(lang) {
   document.documentElement.lang = lang;
 }
 </script>
-<!-- FENIX LIVE STATS START -->
-<script>
-async function updateFenixLiveStats() {
-  try {
-    const res = await fetch('/api/stats?ts=' + Date.now(), {
-      cache: 'no-store'
-    });
-
-    if (!res.ok) return;
-
-    const stats = await res.json();
-
-    const guilds = Number(stats.guilds || 0);
-    const users = Number(stats.users || 0);
-    const ping = Number(stats.ping || 0);
-
-    const format = (n) => new Intl.NumberFormat('pl-PL').format(n);
-
-    const heroStats = document.querySelectorAll('.hero-stats .stat-val');
-    if (heroStats[0]) heroStats[0].textContent = format(guilds);
-    if (heroStats[1]) heroStats[1].textContent = format(users);
-    if (heroStats[2]) heroStats[2].textContent = ping > 0 ? `${ping} ms` : '—';
-
-    const bandStats = document.querySelectorAll('.stats-band .band-val');
-    if (bandStats[0]) bandStats[0].textContent = format(guilds);
-    if (bandStats[1]) bandStats[1].textContent = format(users);
-    if (bandStats[2]) bandStats[2].textContent = ping > 0 ? `${ping} ms` : '—';
-
-  } catch (err) {
-    console.error('Live stats error:', err);
-  }
-}
-
-document.addEventListener('DOMContentLoaded', updateFenixLiveStats);
-updateFenixLiveStats();
-setInterval(updateFenixLiveStats, 30000);
-</script>
-<!-- FENIX LIVE STATS END -->
 </body>
 </html>
+
