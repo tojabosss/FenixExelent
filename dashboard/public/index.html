@@ -25,6 +25,18 @@
 
   * { margin:0; padding:0; box-sizing:border-box; }
 
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
   html { scroll-behavior: smooth; }
 
   body {
@@ -108,6 +120,10 @@
     transition: all .2s;
   }
   .lang-selected:hover { background: rgba(37,99,235,0.15); border-color: var(--blue-core); }
+  .lang-selected:focus-visible, .lang-opt:focus-visible {
+    outline: 2px solid var(--blue-light);
+    outline-offset: 2px;
+  }
   .lang-chevron {
     font-size: 10px;
     color: var(--text-muted);
@@ -123,10 +139,12 @@
     border-radius: 8px;
     padding: 6px;
     z-index: 999;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 3px;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
     box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-    min-width: 190px;
+    min-width: 280px;
+    max-height: min(420px, calc(100vh - 86px));
+    overflow-y: auto;
   }
   .lang-menu.open { display: grid; }
   .lang-opt {
@@ -140,8 +158,17 @@
     padding: 7px 10px;
     border-radius: 5px;
     cursor: pointer;
-    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    text-align: left;
     transition: all .15s;
+  }
+  .lang-opt small {
+    color: var(--text-muted);
+    font-size: 0.66rem;
+    letter-spacing: 0.08em;
   }
   .lang-opt:hover, .lang-opt.active {
     background: rgba(37,99,235,0.15);
@@ -348,7 +375,8 @@
     color: var(--text-primary);
     letter-spacing: -0.02em;
   }
-  .stat-val span { color: var(--gold); }
+  .stat-val b { color: inherit; font: inherit; }
+  .stat-val .stat-unit { color: var(--gold); }
   .stat-label {
     font-size: 0.72rem;
     text-transform: uppercase;
@@ -764,26 +792,26 @@
 
   <div class="nav-right">
     <div class="lang-dropdown-wrap">
-      <button class="lang-selected" id="langBtn" onclick="toggleLangMenu()">
+      <button type="button" class="lang-selected" id="langBtn" onclick="toggleLangMenu()" aria-haspopup="listbox" aria-expanded="false" aria-controls="langMenu" aria-label="Wybierz język">
         <span id="currentLangLabel">PL</span>
         <span class="lang-chevron" id="langChevron">▼</span>
       </button>
-      <div class="lang-menu" id="langMenu">
-        <button class="lang-opt active" onclick="setLang('pl')">PL</button>
-        <button class="lang-opt" onclick="setLang('en')">EN</button>
-        <button class="lang-opt" onclick="setLang('de')">DE</button>
-        <button class="lang-opt" onclick="setLang('fr')">FR</button>
-        <button class="lang-opt" onclick="setLang('es')">ES</button>
-        <button class="lang-opt" onclick="setLang('it')">IT</button>
-        <button class="lang-opt" onclick="setLang('pt')">PT</button>
-        <button class="lang-opt" onclick="setLang('ru')">RU</button>
-        <button class="lang-opt" onclick="setLang('nl')">NL</button>
-        <button class="lang-opt" onclick="setLang('tr')">TR</button>
-        <button class="lang-opt" onclick="setLang('uk')">UK</button>
-        <button class="lang-opt" onclick="setLang('ja')">JA</button>
-        <button class="lang-opt" onclick="setLang('ko')">KO</button>
-        <button class="lang-opt" onclick="setLang('zh')">ZH</button>
-        <button class="lang-opt" onclick="setLang('ar')">AR</button>
+      <div class="lang-menu" id="langMenu" role="listbox" aria-label="Language">
+        <button type="button" class="lang-opt active" data-lang="pl" role="option" aria-selected="true" onclick="setLang('pl')"><span>Polski</span><small>PL</small></button>
+        <button type="button" class="lang-opt" data-lang="en" role="option" aria-selected="false" onclick="setLang('en')"><span>English</span><small>EN</small></button>
+        <button type="button" class="lang-opt" data-lang="de" role="option" aria-selected="false" onclick="setLang('de')"><span>Deutsch</span><small>DE</small></button>
+        <button type="button" class="lang-opt" data-lang="fr" role="option" aria-selected="false" onclick="setLang('fr')"><span>Français</span><small>FR</small></button>
+        <button type="button" class="lang-opt" data-lang="es" role="option" aria-selected="false" onclick="setLang('es')"><span>Español</span><small>ES</small></button>
+        <button type="button" class="lang-opt" data-lang="it" role="option" aria-selected="false" onclick="setLang('it')"><span>Italiano</span><small>IT</small></button>
+        <button type="button" class="lang-opt" data-lang="pt" role="option" aria-selected="false" onclick="setLang('pt')"><span>Português</span><small>PT</small></button>
+        <button type="button" class="lang-opt" data-lang="ru" role="option" aria-selected="false" onclick="setLang('ru')"><span>Русский</span><small>RU</small></button>
+        <button type="button" class="lang-opt" data-lang="nl" role="option" aria-selected="false" onclick="setLang('nl')"><span>Nederlands</span><small>NL</small></button>
+        <button type="button" class="lang-opt" data-lang="tr" role="option" aria-selected="false" onclick="setLang('tr')"><span>Türkçe</span><small>TR</small></button>
+        <button type="button" class="lang-opt" data-lang="uk" role="option" aria-selected="false" onclick="setLang('uk')"><span>Українська</span><small>UK</small></button>
+        <button type="button" class="lang-opt" data-lang="ja" role="option" aria-selected="false" onclick="setLang('ja')"><span>日本語</span><small>JA</small></button>
+        <button type="button" class="lang-opt" data-lang="ko" role="option" aria-selected="false" onclick="setLang('ko')"><span>한국어</span><small>KO</small></button>
+        <button type="button" class="lang-opt" data-lang="zh" role="option" aria-selected="false" onclick="setLang('zh')"><span>中文</span><small>ZH</small></button>
+        <button type="button" class="lang-opt" data-lang="ar" role="option" aria-selected="false" onclick="setLang('ar')"><span>العربية</span><small>AR</small></button>
       </div>
     </div>
 
@@ -823,17 +851,18 @@
         </a>
         <a href="#features" class="btn-secondary" data-i18n="hero_cta2">Zobacz Funkcje</a>
       </div>
+      <p class="sr-only" id="statsLiveStatus" role="status" aria-live="polite"></p>
       <div class="hero-stats">
         <div class="stat-item">
-          <div class="stat-val">1<span>K+</span></div>
+          <div class="stat-val"><b id="heroGuilds">—</b></div>
           <div class="stat-label" data-i18n="stat1">Serwerów</div>
         </div>
         <div class="stat-item">
-          <div class="stat-val">50<span>K+</span></div>
-          <div class="stat-label" data-i18n="stat2">Użytkowników</div>
+          <div class="stat-val"><b id="heroMembers">—</b></div>
+          <div class="stat-label" data-i18n="stat2">Członków</div>
         </div>
         <div class="stat-item">
-          <div class="stat-val">&lt;50<span>ms</span></div>
+          <div class="stat-val"><b id="heroPing">—</b><span class="stat-unit" id="heroPingUnit"></span></div>
           <div class="stat-label" data-i18n="stat3">Średni Ping</div>
         </div>
       </div>
@@ -965,19 +994,19 @@
 <div class="stats-band">
   <div class="section-inner">
     <div class="band-stat reveal">
-      <div class="band-val">1K+</div>
+      <div class="band-val" id="bandGuilds">—</div>
       <div class="band-label" data-i18n="band1">Serwery Chronione</div>
     </div>
     <div class="band-stat reveal">
-      <div class="band-val">50K+</div>
+      <div class="band-val" id="bandMembers">—</div>
       <div class="band-label" data-i18n="band2">Użytkownicy Pod Ochroną</div>
     </div>
     <div class="band-stat reveal">
-      <div class="band-val">&lt;50ms</div>
+      <div class="band-val" id="bandPing">—</div>
       <div class="band-label" data-i18n="band3">Średni Ping</div>
     </div>
     <div class="band-stat reveal">
-      <div class="band-val">24/7</div>
+      <div class="band-val" id="bandUptime">—</div>
       <div class="band-label" data-i18n="band4">Aktywna Ochrona</div>
     </div>
   </div>
@@ -998,7 +1027,7 @@
           <div class="why-item"><div class="why-check">✓</div><div class="why-text"><strong data-i18n="w2t">Zaawansowana Moderacja</strong><span data-i18n="w2d">Pełna automatyzacja bez potrzeby ręcznej interwencji</span></div></div>
           <div class="why-item"><div class="why-check">✓</div><div class="why-text"><strong data-i18n="w3t">Automatyczna Ochrona</strong><span data-i18n="w3d">Reaguje w ułamku sekundy od wykrycia zagrożenia</span></div></div>
           <div class="why-item"><div class="why-check">✓</div><div class="why-text"><strong data-i18n="w4t">Łatwa Konfiguracja</strong><span data-i18n="w4d">Gotowy do działania w mniej niż 5 minut</span></div></div>
-          <div class="why-item"><div class="why-check">✓</div><div class="why-text"><strong data-i18n="w5t">Wysoka Wydajność</strong><span data-i18n="w5d">Ping poniżej 50ms, dostępność 99.9%</span></div></div>
+          <div class="why-item"><div class="why-check">✓</div><div class="why-text"><strong data-i18n="w5t">Wysoka Wydajność</strong><span data-i18n="w5d">Rzeczywisty ping i czas działania aktualizowane na żywo</span></div></div>
           <div class="why-item"><div class="why-check">✓</div><div class="why-text"><strong data-i18n="w6t">Darmowy Dostęp</strong><span data-i18n="w6d">Pełna ochrona bez żadnych ukrytych kosztów</span></div></div>
         </div>
       </div>
@@ -1029,7 +1058,7 @@
 &nbsp;&nbsp;},<br>
 &nbsp;&nbsp;<span class="c-fn">verification</span>: <span class="c-gold">true</span><br>
 };<br><br>
-<span class="c-cm">// ✅ Ochrona aktywna 24/7</span>
+<span class="c-cm">// ✅ Ochrona aktywna</span>
         </div>
       </div>
     </div>
@@ -1049,8 +1078,8 @@
       <div class="cta-badges">
         <div class="badge"><span>✓</span> <span data-i18n="b1">Darmowy</span></div>
         <div class="badge"><span>✓</span> <span data-i18n="b2">Łatwa Konfiguracja</span></div>
-        <div class="badge"><span>✓</span> <span data-i18n="b3">Ochrona 24/7</span></div>
-        <div class="badge"><span>✓</span> <span data-i18n="b4">Ping &lt;50ms</span></div>
+        <div class="badge"><span>✓</span> <span data-i18n="b3">Automatyczna ochrona</span></div>
+        <div class="badge"><span>✓</span> <span data-i18n="b4">Statystyki na żywo</span></div>
       </div>
     </div>
   </div>
@@ -1150,15 +1179,42 @@ function toggleLangMenu() {
   const menu = document.getElementById('langMenu');
   const chevron = document.getElementById('langChevron');
   const open = menu.classList.toggle('open');
+  document.getElementById('langBtn').setAttribute('aria-expanded', String(open));
   chevron.style.transform = open ? 'rotate(180deg)' : '';
+}
+
+function closeLangMenu({ focusButton = false } = {}) {
+  const menu = document.getElementById('langMenu');
+  const button = document.getElementById('langBtn');
+  menu.classList.remove('open');
+  button.setAttribute('aria-expanded', 'false');
+  document.getElementById('langChevron').style.transform = '';
+  if (focusButton) button.focus();
 }
 
 document.addEventListener('click', function(e) {
   if (!e.target.closest('.lang-dropdown-wrap')) {
-    const menu = document.getElementById('langMenu');
-    const chevron = document.getElementById('langChevron');
-    if (menu) menu.classList.remove('open');
-    if (chevron) chevron.style.transform = '';
+    closeLangMenu();
+  }
+});
+
+document.getElementById('langBtn').addEventListener('keydown', event => {
+  if (event.key !== 'ArrowDown') return;
+  event.preventDefault();
+  if (!document.getElementById('langMenu').classList.contains('open')) toggleLangMenu();
+  document.querySelector('.lang-opt.active')?.focus();
+});
+
+document.getElementById('langMenu').addEventListener('keydown', event => {
+  const options = [...document.querySelectorAll('.lang-opt')];
+  const currentIndex = options.indexOf(document.activeElement);
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeLangMenu({ focusButton: true });
+  } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    event.preventDefault();
+    const direction = event.key === 'ArrowDown' ? 1 : -1;
+    options[(currentIndex + direction + options.length) % options.length].focus();
   }
 });
 
@@ -1169,7 +1225,7 @@ const translations = {
     hero_badge:'Ochrona Nowej Generacji',
     hero_desc:'Kompleksowa ochrona Twojego serwera Discord. Blokuj raiderów, nukerów i nadużycia — automatycznie, bez przerwy, bez kompromisów.',
     hero_cta:'Dodaj do Serwera', hero_cta2:'Zobacz Funkcje',
-    stat1:'Serwerów', stat2:'Użytkowników', stat3:'Średni Ping',
+    stat1:'Serwerów', stat2:'Członków', stat3:'Średni Ping',
     feat_label:'Funkcje', feat_title:'Kompletny Arsenał Ochrony', feat_sub:'Wszystko, czego potrzebuje Twój serwer — w jednym bocie.',
     f1_name:'AntiSpam', f1_desc:'Automatyczne wykrywanie spamu, floodu i nadużyć. Bot natychmiast wycisza sprawców i zapisuje pełne logi incydentów do późniejszego przeglądu.',
     f2_name:'AntiRaid', f2_desc:'Ochrona przed masowymi dołączeniami i skoordynowanymi atakami. Automatyczne kicki, bany lub timeouty — konfigurowalne do Twoich potrzeb.',
@@ -1178,17 +1234,17 @@ const translations = {
     f5_name:'System Ticketów', f5_desc:'Profesjonalny support z automatycznym tworzeniem prywatnych kanałów pomocy. Transkrypcje, priorytety i przypisanie moderatorów.',
     f6_name:'Dashboard WWW', f6_desc:'Zarządzaj wszystkimi ustawieniami przez intuicyjny panel webowy. Logi, statystyki i konfiguracja — w jednym miejscu, z każdego urządzenia.',
     thr_label:'Inteligentne wykrywanie', thr_title:'Zagrożenia, Które Blokujemy', thr_sub:'FenixExelent monitoruje każde działanie na serwerze i reaguje błyskawicznie, zanim pojawi się szkoda.',
-    t1:'Scam links and phishing', t2:'IP loggers', t3:'Fake Discord Nitro', t4:'Fake Steam rewards', t5:'Crypto giveaway scams', t6:'Spam and flooding', t7:'Mass bot joins', t8:'Unauthorized channel creation', t9:'Webhook abuse', t10:'Suspicious .xyz / .click / .top / .work domains', t11:'Dangerous permissions', t12:'Ping @everyone and @here',
-    band1:'Serwery Chronione', band2:'Użytkownicy Pod Ochroną', band3:'Średni Ping', band4:'Aktywna Ochrona',
+    t1:'Scam linki i phishing', t2:'IP loggery', t3:'Fałszywe Discord Nitro', t4:'Fałszywe nagrody Steam', t5:'Oszustwa crypto giveaway', t6:'Spam i flood', t7:'Masowe wejścia botów', t8:'Nieautoryzowane tworzenie kanałów', t9:'Nadużywanie webhooków', t10:'Podejrzane domeny .xyz / .click / .top / .work', t11:'Niebezpieczne uprawnienia', t12:'Ping @everyone i @here',
+    band1:'Serwery Chronione', band2:'Członkowie Pod Ochroną', band3:'Średni Ping', band4:'Czas Działania',
     why_label:'Przewaga', why_title:'Dlaczego FenixExelent?', why_sub:'Zaprojektowany przez moderatorów, dla moderatorów. Zero kompromisów w bezpieczeństwie.',
     w1t:'Nowoczesny Dashboard', w1d:'Panel WWW z pełną kontrolą ustawień',
     w2t:'Zaawansowana Moderacja', w2d:'Pełna automatyzacja bez potrzeby ręcznej interwencji',
     w3t:'Automatyczna Ochrona', w3d:'Reaguje w ułamku sekundy od wykrycia zagrożenia',
     w4t:'Łatwa Konfiguracja', w4d:'Gotowy do działania w mniej niż 5 minut',
-    w5t:'Wysoka Wydajność', w5d:'Ping poniżej 50ms, dostępność 99.9%',
+    w5t:'Wysoka Wydajność', w5d:'Rzeczywisty ping i czas działania aktualizowane na żywo',
     w6t:'Darmowy Dostęp', w6d:'Pełna ochrona bez żadnych ukrytych kosztów',
     cta_title:'Dołącz Dziś', cta_desc:'Dodaj FenixExelent na swój serwer i zapewnij społeczności najwyższy poziom bezpieczeństwa. Za darmo, zawsze.', cta_btn:'Dodaj FenixExelent',
-    b1:'Darmowy', b2:'Łatwa Konfiguracja', b3:'Ochrona 24/7', b4:'Ping <50ms',
+    b1:'Darmowy', b2:'Łatwa Konfiguracja', b3:'Automatyczna ochrona', b4:'Statystyki na żywo',
     footer_tagline:'Ochrona Twojego Serwera Discord', footer_privacy:'Prywatność', footer_terms:'Warunki', footer_support:'Support', footer_discord:'Discord'
   },
   en: {
@@ -1196,7 +1252,7 @@ const translations = {
     hero_badge:'Next-Gen Server Protection',
     hero_desc:'Comprehensive protection for your Discord server. Block raiders, nukers, and abuse — automatically, around the clock, without compromise.',
     hero_cta:'Add to Server', hero_cta2:'View Features',
-    stat1:'Servers', stat2:'Users', stat3:'Average Ping',
+    stat1:'Servers', stat2:'Members', stat3:'Average Ping',
     feat_label:'Features', feat_title:'Complete Protection Arsenal', feat_sub:'Everything your server needs — in one bot.',
     f1_name:'AntiSpam', f1_desc:'Automatic detection of spam, flooding, and abuse. The bot instantly mutes offenders and saves complete incident logs for later review.',
     f2_name:'AntiRaid', f2_desc:'Protection against mass joins and coordinated attacks. Automatic kicks, bans, or timeouts — fully configurable to your needs.',
@@ -1206,16 +1262,16 @@ const translations = {
     f6_name:'Web Dashboard', f6_desc:'Manage all settings through an intuitive web panel. Logs, statistics, and configuration — in one place, from any device.',
     thr_label:'Intelligent Detection', thr_title:'Threats We Block', thr_sub:'FenixExelent monitors every action on the server and reacts instantly before damage occurs.',
     t1:'Adding Bots', t2:'Banning Members', t3:'Kicking Members', t4:'Creating Channels', t5:'Deleting Channels', t6:'Creating Roles', t7:'Deleting Roles', t8:'Dangerous Permissions', t9:'Granting Dangerous Roles', t10:'Changing Vanity URL', t11:'Creating Webhooks', t12:'Pinging @everyone & @here',
-    band1:'Protected Servers', band2:'Users Protected', band3:'Average Ping', band4:'Active Protection',
+    band1:'Protected Servers', band2:'Members Protected', band3:'Average Ping', band4:'Uptime',
     why_label:'Advantage', why_title:'Why FenixExelent?', why_sub:'Built by moderators, for moderators. Zero compromises on security.',
     w1t:'Modern Dashboard', w1d:'Web panel with full settings control',
     w2t:'Advanced Moderation', w2d:'Full automation without manual intervention',
     w3t:'Automatic Protection', w3d:'Reacts within milliseconds of detecting a threat',
     w4t:'Easy Setup', w4d:'Up and running in under 5 minutes',
-    w5t:'High Performance', w5d:'Ping below 50ms, 99.9% uptime',
+    w5t:'High Performance', w5d:'Real latency and uptime updated live',
     w6t:'Free Access', w6d:'Full protection with no hidden costs',
     cta_title:'Join Today', cta_desc:'Add FenixExelent to your server and give your community the highest level of security. Free, always.', cta_btn:'Add FenixExelent',
-    b1:'Free', b2:'Easy Setup', b3:'24/7 Protection', b4:'Ping <50ms',
+    b1:'Free', b2:'Easy Setup', b3:'Automatic protection', b4:'Live statistics',
     footer_tagline:'Discord Server Protection', footer_privacy:'Privacy', footer_terms:'Terms', footer_support:'Support', footer_discord:'Discord'
   },
   de: {
@@ -1233,16 +1289,16 @@ const translations = {
     f6_name:'Web-Dashboard', f6_desc:'Verwalte alle Einstellungen über ein intuitives Webpanel. Logs, Statistiken und Konfiguration — an einem Ort, von jedem Gerät.',
     thr_label:'Intelligente Erkennung', thr_title:'Bedrohungen, Die Wir Blockieren', thr_sub:'FenixExelent überwacht jede Aktion auf dem Server und reagiert sofort, bevor Schaden entsteht.',
     t1:'Bots hinzufügen', t2:'Mitglieder bannen', t3:'Mitglieder kicken', t4:'Kanäle erstellen', t5:'Kanäle löschen', t6:'Rollen erstellen', t7:'Rollen löschen', t8:'Gefährliche Berechtigungen', t9:'Gefährliche Rollen vergeben', t10:'Vanity URL ändern', t11:'Webhooks erstellen', t12:'@everyone & @here pingen',
-    band1:'Geschützte Server', band2:'Geschützte Nutzer', band3:'Ø Ping', band4:'Aktiver Schutz',
+    band1:'Geschützte Server', band2:'Geschützte Nutzer', band3:'Ø Ping', band4:'Betriebszeit',
     why_label:'Vorteil', why_title:'Warum FenixExelent?', why_sub:'Von Moderatoren für Moderatoren entwickelt. Null Kompromisse bei der Sicherheit.',
     w1t:'Modernes Dashboard', w1d:'Webpanel mit voller Einstellungskontrolle',
     w2t:'Erweiterte Moderation', w2d:'Vollautomatisierung ohne manuelle Eingriffe',
     w3t:'Automatischer Schutz', w3d:'Reagiert in Millisekunden nach Bedrohungserkennung',
     w4t:'Einfache Einrichtung', w4d:'In weniger als 5 Minuten betriebsbereit',
-    w5t:'Hohe Leistung', w5d:'Ping unter 50ms, 99,9% Verfügbarkeit',
+    w5t:'Hohe Leistung', w5d:'Echte Latenz und Betriebszeit werden live aktualisiert',
     w6t:'Kostenloser Zugang', w6d:'Vollständiger Schutz ohne versteckte Kosten',
     cta_title:'Jetzt Beitreten', cta_desc:'Füge FenixExelent zu deinem Server hinzu und biete deiner Community höchste Sicherheit. Kostenlos, immer.', cta_btn:'FenixExelent Hinzufügen',
-    b1:'Kostenlos', b2:'Einfache Einrichtung', b3:'24/7 Schutz', b4:'Ping <50ms',
+    b1:'Kostenlos', b2:'Einfache Einrichtung', b3:'Automatischer Schutz', b4:'Live-Statistiken',
     footer_tagline:'Discord Server Schutz', footer_privacy:'Datenschutz', footer_terms:'AGB', footer_support:'Support', footer_discord:'Discord'
   },
   fr: {
@@ -1260,16 +1316,16 @@ const translations = {
     f6_name:'Tableau de Bord', f6_desc:"Gérez tous les paramètres via un panel web intuitif. Logs, statistiques et configuration — au même endroit, depuis n'importe quel appareil.",
     thr_label:'Détection Intelligente', thr_title:'Menaces Que Nous Bloquons', thr_sub:'FenixExelent surveille chaque action sur le serveur et réagit instantanément avant tout dommage.',
     t1:'Ajout de Bots', t2:'Bannissement de Membres', t3:'Expulsion de Membres', t4:'Création de Canaux', t5:'Suppression de Canaux', t6:'Création de Rôles', t7:'Suppression de Rôles', t8:'Permissions Dangereuses', t9:'Attribution de Rôles Dangereux', t10:'Changement du Vanity URL', t11:'Création de Webhooks', t12:'Ping @everyone & @here',
-    band1:'Serveurs Protégés', band2:'Utilisateurs Protégés', band3:'Ping Moyen', band4:'Protection Active',
+    band1:'Serveurs Protégés', band2:'Utilisateurs Protégés', band3:'Ping Moyen', band4:'Temps de Fonctionnement',
     why_label:'Avantage', why_title:'Pourquoi FenixExelent?', why_sub:'Conçu par des modérateurs, pour des modérateurs. Zéro compromis sur la sécurité.',
     w1t:'Tableau de Bord Moderne', w1d:'Panel web avec contrôle complet des paramètres',
     w2t:'Modération Avancée', w2d:'Automatisation complète sans intervention manuelle',
     w3t:'Protection Automatique', w3d:"Réagit en millisecondes après détection d'une menace",
     w4t:'Configuration Facile', w4d:'Opérationnel en moins de 5 minutes',
-    w5t:'Haute Performance', w5d:'Ping inférieur à 50ms, disponibilité 99,9%',
+    w5t:'Haute Performance', w5d:'Latence réelle et temps de fonctionnement actualisés en direct',
     w6t:'Accès Gratuit', w6d:'Protection complète sans coûts cachés',
     cta_title:"Rejoignez Aujourd'hui", cta_desc:'Ajoutez FenixExelent à votre serveur et offrez à votre communauté le plus haut niveau de sécurité. Gratuit, toujours.', cta_btn:'Ajouter FenixExelent',
-    b1:'Gratuit', b2:'Configuration Facile', b3:'Protection 24/7', b4:'Ping <50ms',
+    b1:'Gratuit', b2:'Configuration Facile', b3:'Protection automatique', b4:'Statistiques en direct',
     footer_tagline:'Protection de Serveur Discord', footer_privacy:'Confidentialité', footer_terms:'CGU', footer_support:'Support', footer_discord:'Discord'
   },
   es: {
@@ -1287,16 +1343,16 @@ const translations = {
     f6_name:'Panel Web', f6_desc:'Gestiona todos los ajustes mediante un panel web intuitivo. Logs, estadísticas y configuración — en un solo lugar, desde cualquier dispositivo.',
     thr_label:'Detección Inteligente', thr_title:'Amenazas Que Bloqueamos', thr_sub:'FenixExelent monitorea cada acción en el servidor y reacciona al instante antes de que ocurra daño.',
     t1:'Añadir Bots', t2:'Banear Miembros', t3:'Expulsar Miembros', t4:'Crear Canales', t5:'Eliminar Canales', t6:'Crear Roles', t7:'Eliminar Roles', t8:'Permisos Peligrosos', t9:'Asignar Roles Peligrosos', t10:'Cambiar Vanity URL', t11:'Crear Webhooks', t12:'Ping @everyone y @here',
-    band1:'Servidores Protegidos', band2:'Usuarios Protegidos', band3:'Ping Medio', band4:'Protección Activa',
+    band1:'Servidores Protegidos', band2:'Usuarios Protegidos', band3:'Ping Medio', band4:'Tiempo Activo',
     why_label:'Ventaja', why_title:'¿Por Qué FenixExelent?', why_sub:'Diseñado por moderadores, para moderadores. Cero compromisos en seguridad.',
     w1t:'Panel Moderno', w1d:'Panel web con control total de ajustes',
     w2t:'Moderación Avanzada', w2d:'Automatización completa sin intervención manual',
     w3t:'Protección Automática', w3d:'Reacciona en milisegundos al detectar una amenaza',
     w4t:'Configuración Fácil', w4d:'Listo en menos de 5 minutos',
-    w5t:'Alto Rendimiento', w5d:'Ping inferior a 50ms, disponibilidad 99,9%',
+    w5t:'Alto Rendimiento', w5d:'Latencia real y tiempo activo actualizados en vivo',
     w6t:'Acceso Gratuito', w6d:'Protección completa sin costes ocultos',
     cta_title:'Únete Hoy', cta_desc:'Añade FenixExelent a tu servidor y dale a tu comunidad el máximo nivel de seguridad. Gratis, siempre.', cta_btn:'Añadir FenixExelent',
-    b1:'Gratuito', b2:'Fácil Configuración', b3:'Protección 24/7', b4:'Ping <50ms',
+    b1:'Gratuito', b2:'Fácil Configuración', b3:'Protección automática', b4:'Estadísticas en vivo',
     footer_tagline:'Protección de Servidor Discord', footer_privacy:'Privacidad', footer_terms:'Términos', footer_support:'Soporte', footer_discord:'Discord'
   },
   it: {
@@ -1314,16 +1370,16 @@ const translations = {
     f6_name:'Dashboard Web', f6_desc:'Gestisci tutte le impostazioni tramite un pannello web intuitivo. Log, statistiche e configurazione — in un unico posto, da qualsiasi dispositivo.',
     thr_label:'Rilevamento Intelligente', thr_title:'Minacce Che Blocchiamo', thr_sub:'FenixExelent monitora ogni azione sul server e reagisce istantaneamente prima che si verifichi un danno.',
     t1:'Aggiunta Bot', t2:'Ban Membri', t3:'Kick Membri', t4:'Creazione Canali', t5:'Eliminazione Canali', t6:'Creazione Ruoli', t7:'Eliminazione Ruoli', t8:'Permessi Pericolosi', t9:'Assegnazione Ruoli Pericolosi', t10:'Cambio Vanity URL', t11:'Creazione Webhook', t12:'Ping @everyone e @here',
-    band1:'Server Protetti', band2:'Utenti Protetti', band3:'Ping Medio', band4:'Protezione Attiva',
+    band1:'Server Protetti', band2:'Utenti Protetti', band3:'Ping Medio', band4:'Tempo di Attività',
     why_label:'Vantaggio', why_title:'Perché FenixExelent?', why_sub:'Progettato da moderatori, per moderatori. Zero compromessi sulla sicurezza.',
     w1t:'Dashboard Moderno', w1d:'Pannello web con controllo completo delle impostazioni',
     w2t:'Moderazione Avanzata', w2d:'Automazione completa senza intervento manuale',
     w3t:'Protezione Automatica', w3d:'Reagisce in millisecondi dopo il rilevamento di una minaccia',
     w4t:'Configurazione Facile', w4d:'Operativo in meno di 5 minuti',
-    w5t:'Alte Prestazioni', w5d:'Ping inferiore a 50ms, disponibilità 99,9%',
+    w5t:'Alte Prestazioni', w5d:'Latenza reale e tempo di attività aggiornati in diretta',
     w6t:'Accesso Gratuito', w6d:'Protezione completa senza costi nascosti',
     cta_title:'Unisciti Oggi', cta_desc:'Aggiungi FenixExelent al tuo server e offri alla tua comunità il massimo livello di sicurezza. Gratis, sempre.', cta_btn:'Aggiungi FenixExelent',
-    b1:'Gratuito', b2:'Configurazione Facile', b3:'Protezione 24/7', b4:'Ping <50ms',
+    b1:'Gratuito', b2:'Configurazione Facile', b3:'Protezione automatica', b4:'Statistiche in tempo reale',
     footer_tagline:'Protezione Server Discord', footer_privacy:'Privacy', footer_terms:'Termini', footer_support:'Supporto', footer_discord:'Discord'
   },
   pt: {
@@ -1341,16 +1397,16 @@ const translations = {
     f6_name:'Painel Web', f6_desc:'Gerencie todas as configurações através de um painel web intuitivo. Logs, estatísticas e configuração — em um só lugar, de qualquer dispositivo.',
     thr_label:'Detecção Inteligente', thr_title:'Ameaças Que Bloqueamos', thr_sub:'FenixExelent monitora cada ação no servidor e reage instantaneamente antes que ocorra qualquer dano.',
     t1:'Adicionar Bots', t2:'Banir Membros', t3:'Expulsar Membros', t4:'Criar Canais', t5:'Excluir Canais', t6:'Criar Cargos', t7:'Excluir Cargos', t8:'Permissões Perigosas', t9:'Atribuir Cargos Perigosos', t10:'Alterar Vanity URL', t11:'Criar Webhooks', t12:'Ping @everyone e @here',
-    band1:'Servidores Protegidos', band2:'Usuários Protegidos', band3:'Ping Médio', band4:'Proteção Ativa',
+    band1:'Servidores Protegidos', band2:'Usuários Protegidos', band3:'Ping Médio', band4:'Tempo de Atividade',
     why_label:'Vantagem', why_title:'Por Que FenixExelent?', why_sub:'Projetado por moderadores, para moderadores. Zero compromissos em segurança.',
     w1t:'Painel Moderno', w1d:'Painel web com controle total das configurações',
     w2t:'Moderação Avançada', w2d:'Automação completa sem intervenção manual',
     w3t:'Proteção Automática', w3d:'Reage em milissegundos após detectar uma ameaça',
     w4t:'Configuração Fácil', w4d:'Pronto em menos de 5 minutos',
-    w5t:'Alto Desempenho', w5d:'Ping abaixo de 50ms, disponibilidade 99,9%',
+    w5t:'Alto Desempenho', w5d:'Latência real e tempo de atividade atualizados ao vivo',
     w6t:'Acesso Gratuito', w6d:'Proteção completa sem custos ocultos',
     cta_title:'Junte-se Hoje', cta_desc:'Adicione FenixExelent ao seu servidor e dê à sua comunidade o mais alto nível de segurança. Grátis, sempre.', cta_btn:'Adicionar FenixExelent',
-    b1:'Gratuito', b2:'Configuração Fácil', b3:'Proteção 24/7', b4:'Ping <50ms',
+    b1:'Gratuito', b2:'Configuração Fácil', b3:'Proteção automática', b4:'Estatísticas ao vivo',
     footer_tagline:'Proteção de Servidor Discord', footer_privacy:'Privacidade', footer_terms:'Termos', footer_support:'Suporte', footer_discord:'Discord'
   },
   ru: {
@@ -1368,16 +1424,16 @@ const translations = {
     f6_name:'Веб-Панель', f6_desc:'Управляйте всеми настройками через интуитивную веб-панель. Логи, статистика и конфигурация — в одном месте, с любого устройства.',
     thr_label:'Интеллектуальное Обнаружение', thr_title:'Угрозы, Которые Мы Блокируем', thr_sub:'FenixExelent отслеживает каждое действие на сервере и реагирует мгновенно до нанесения вреда.',
     t1:'Добавление Ботов', t2:'Бан Участников', t3:'Кик Участников', t4:'Создание Каналов', t5:'Удаление Каналов', t6:'Создание Ролей', t7:'Удаление Ролей', t8:'Опасные Права', t9:'Выдача Опасных Ролей', t10:'Смена Vanity URL', t11:'Создание Вебхуков', t12:'Пинг @everyone и @here',
-    band1:'Защищённых Серверов', band2:'Пользователей Под Защитой', band3:'Средний Пинг', band4:'Активная Защита',
+    band1:'Защищённых Серверов', band2:'Пользователей Под Защитой', band3:'Средний Пинг', band4:'Время Работы',
     why_label:'Преимущество', why_title:'Почему FenixExelent?', why_sub:'Создан модераторами для модераторов. Никаких компромиссов в безопасности.',
     w1t:'Современная Панель', w1d:'Веб-панель с полным контролем настроек',
     w2t:'Расширенная Модерация', w2d:'Полная автоматизация без ручного вмешательства',
     w3t:'Автоматическая Защита', w3d:'Реагирует за миллисекунды после обнаружения угрозы',
     w4t:'Простая Настройка', w4d:'Готов к работе менее чем за 5 минут',
-    w5t:'Высокая Производительность', w5d:'Пинг ниже 50мс, доступность 99,9%',
+    w5t:'Высокая Производительность', w5d:'Реальная задержка и время работы обновляются в реальном времени',
     w6t:'Бесплатный Доступ', w6d:'Полная защита без скрытых платежей',
     cta_title:'Присоединяйся Сегодня', cta_desc:'Добавьте FenixExelent на свой сервер и обеспечьте сообществу наивысший уровень безопасности. Бесплатно, всегда.', cta_btn:'Добавить FenixExelent',
-    b1:'Бесплатно', b2:'Простая Настройка', b3:'Защита 24/7', b4:'Пинг <50мс',
+    b1:'Бесплатно', b2:'Простая Настройка', b3:'Автоматическая защита', b4:'Статистика в реальном времени',
     footer_tagline:'Защита Discord-Сервера', footer_privacy:'Конфиденциальность', footer_terms:'Условия', footer_support:'Поддержка', footer_discord:'Discord'
   },
   nl: {
@@ -1395,16 +1451,16 @@ const translations = {
     f6_name:'Webdashboard', f6_desc:'Beheer alle instellingen via een intuïtief webpanel. Logs, statistieken en configuratie — op één plek, vanaf elk apparaat.',
     thr_label:'Intelligente Detectie', thr_title:'Bedreigingen Die Wij Blokkeren', thr_sub:'FenixExelent monitort elke actie op de server en reageert onmiddellijk voor er schade optreedt.',
     t1:'Bots Toevoegen', t2:'Leden Bannen', t3:'Leden Kicken', t4:'Kanalen Aanmaken', t5:'Kanalen Verwijderen', t6:'Rollen Aanmaken', t7:'Rollen Verwijderen', t8:'Gevaarlijke Rechten', t9:'Gevaarlijke Rollen Geven', t10:'Vanity URL Wijzigen', t11:'Webhooks Aanmaken', t12:'Ping @everyone & @here',
-    band1:'Beschermde Servers', band2:'Beschermde Gebruikers', band3:'Gemiddelde Ping', band4:'Actieve Bescherming',
+    band1:'Beschermde Servers', band2:'Beschermde Gebruikers', band3:'Gemiddelde Ping', band4:'Uptime',
     why_label:'Voordeel', why_title:'Waarom FenixExelent?', why_sub:'Ontworpen door moderators, voor moderators. Nul compromissen op het gebied van beveiliging.',
     w1t:'Modern Dashboard', w1d:'Webpanel met volledige controle over instellingen',
     w2t:'Geavanceerde Moderatie', w2d:'Volledige automatisering zonder handmatige tussenkomst',
     w3t:'Automatische Bescherming', w3d:'Reageert binnen milliseconden na detectie van een bedreiging',
     w4t:'Eenvoudige Installatie', w4d:'Klaar in minder dan 5 minuten',
-    w5t:'Hoge Prestaties', w5d:'Ping onder 50ms, beschikbaarheid 99,9%',
+    w5t:'Hoge Prestaties', w5d:'Echte latency en uptime worden live bijgewerkt',
     w6t:'Gratis Toegang', w6d:'Volledige bescherming zonder verborgen kosten',
     cta_title:'Doe Vandaag Mee', cta_desc:'Voeg FenixExelent toe aan je server en geef je gemeenschap het hoogste beveiligingsniveau. Gratis, altijd.', cta_btn:'FenixExelent Toevoegen',
-    b1:'Gratis', b2:'Eenvoudige Installatie', b3:'24/7 Bescherming', b4:'Ping <50ms',
+    b1:'Gratis', b2:'Eenvoudige Installatie', b3:'Automatische bescherming', b4:'Live statistieken',
     footer_tagline:'Discord Server Bescherming', footer_privacy:'Privacy', footer_terms:'Voorwaarden', footer_support:'Ondersteuning', footer_discord:'Discord'
   },
   tr: {
@@ -1422,16 +1478,16 @@ const translations = {
     f6_name:'Web Paneli', f6_desc:'Sezgisel bir web paneli aracılığıyla tüm ayarları yönetin. Günlükler, istatistikler ve yapılandırma — tek bir yerde, herhangi bir cihazdan.',
     thr_label:'Akıllı Tespit', thr_title:'Engellediğimiz Tehditler', thr_sub:'FenixExelent sunucudaki her eylemi izler ve hasar oluşmadan anında tepki verir.',
     t1:'Bot Ekleme', t2:'Üye Banlama', t3:'Üye Atma', t4:'Kanal Oluşturma', t5:'Kanal Silme', t6:'Rol Oluşturma', t7:'Rol Silme', t8:'Tehlikeli İzinler', t9:'Tehlikeli Rol Verme', t10:'Vanity URL Değiştirme', t11:'Webhook Oluşturma', t12:'@everyone & @here Pingleme',
-    band1:'Korunan Sunucu', band2:'Korunan Kullanıcı', band3:'Ortalama Ping', band4:'Aktif Koruma',
+    band1:'Korunan Sunucu', band2:'Korunan Kullanıcı', band3:'Ortalama Ping', band4:'Çalışma Süresi',
     why_label:'Avantaj', why_title:'Neden FenixExelent?', why_sub:'Moderatörler tarafından moderatörler için tasarlandı. Güvenlikte sıfır taviz.',
     w1t:'Modern Panel', w1d:'Tam ayar kontrolüne sahip web paneli',
     w2t:'Gelişmiş Moderasyon', w2d:'Manuel müdahale gerektirmeden tam otomasyon',
     w3t:'Otomatik Koruma', w3d:'Tehdit tespitinden milisaniyeler içinde tepki verir',
     w4t:'Kolay Kurulum', w4d:'5 dakikadan kısa sürede hazır',
-    w5t:'Yüksek Performans', w5d:'50ms altı ping, %99,9 erişilebilirlik',
+    w5t:'Yüksek Performans', w5d:'Gerçek gecikme ve çalışma süresi canlı güncellenir',
     w6t:'Ücretsiz Erişim', w6d:'Gizli maliyet olmadan tam koruma',
     cta_title:'Bugün Katıl', cta_desc:"FenixExelent'i sunucunuza ekleyin ve topluluğunuza en yüksek güvenlik seviyesini sağlayın. Ücretsiz, her zaman.", cta_btn:'FenixExelent Ekle',
-    b1:'Ücretsiz', b2:'Kolay Kurulum', b3:'7/24 Koruma', b4:'Ping <50ms',
+    b1:'Ücretsiz', b2:'Kolay Kurulum', b3:'Otomatik koruma', b4:'Canlı istatistikler',
     footer_tagline:'Discord Sunucu Koruması', footer_privacy:'Gizlilik', footer_terms:'Şartlar', footer_support:'Destek', footer_discord:'Discord'
   },
   uk: {
@@ -1449,16 +1505,16 @@ const translations = {
     f6_name:'Веб-Панель', f6_desc:'Керуйте всіма налаштуваннями через інтуїтивну веб-панель. Логи, статистика та конфігурація — в одному місці, з будь-якого пристрою.',
     thr_label:'Інтелектуальне Виявлення', thr_title:'Загрози, Які Ми Блокуємо', thr_sub:'FenixExelent відстежує кожну дію на сервері та реагує миттєво до завдання шкоди.',
     t1:'Додавання Ботів', t2:'Бан Учасників', t3:'Кік Учасників', t4:'Створення Каналів', t5:'Видалення Каналів', t6:'Створення Ролей', t7:'Видалення Ролей', t8:'Небезпечні Права', t9:'Видача Небезпечних Ролей', t10:'Зміна Vanity URL', t11:'Створення Вебхуків', t12:'Пінг @everyone та @here',
-    band1:'Захищених Серверів', band2:'Користувачів Під Захистом', band3:'Середній Пінг', band4:'Активний Захист',
+    band1:'Захищених Серверів', band2:'Користувачів Під Захистом', band3:'Середній Пінг', band4:'Час Роботи',
     why_label:'Перевага', why_title:'Чому FenixExelent?', why_sub:'Створений модераторами для модераторів. Жодних компромісів у безпеці.',
     w1t:'Сучасна Панель', w1d:'Веб-панель з повним контролем налаштувань',
     w2t:'Розширена Модерація', w2d:'Повна автоматизація без ручного втручання',
     w3t:'Автоматичний Захист', w3d:'Реагує за мілісекунди після виявлення загрози',
     w4t:'Проста Налаштування', w4d:'Готовий до роботи менш ніж за 5 хвилин',
-    w5t:'Висока Продуктивність', w5d:'Пінг нижче 50мс, доступність 99,9%',
+    w5t:'Висока Продуктивність', w5d:'Реальна затримка та час роботи оновлюються наживо',
     w6t:'Безкоштовний Доступ', w6d:'Повний захист без прихованих платежів',
     cta_title:'Приєднуйся Сьогодні', cta_desc:'Додайте FenixExelent на свій сервер і забезпечте спільноті найвищий рівень безпеки. Безкоштовно, завжди.', cta_btn:'Додати FenixExelent',
-    b1:'Безкоштовно', b2:'Проста Настройка', b3:'Захист 24/7', b4:'Пінг <50мс',
+    b1:'Безкоштовно', b2:'Проста Настройка', b3:'Автоматичний захист', b4:'Статистика наживо',
     footer_tagline:'Захист Discord-Сервера', footer_privacy:'Конфіденційність', footer_terms:'Умови', footer_support:'Підтримка', footer_discord:'Discord'
   },
   ja: {
@@ -1476,16 +1532,16 @@ const translations = {
     f6_name:'ウェブダッシュボード', f6_desc:'直感的なウェブパネルですべての設定を管理。ログ、統計、設定 — 1か所で、どのデバイスからでも。',
     thr_label:'インテリジェント検出', thr_title:'ブロックする脅威', thr_sub:'FenixExelentはサーバーのすべてのアクションを監視し、被害が発生する前に即座に対応します。',
     t1:'ボット追加', t2:'メンバーBAN', t3:'メンバーキック', t4:'チャンネル作成', t5:'チャンネル削除', t6:'ロール作成', t7:'ロール削除', t8:'危険な権限', t9:'危険なロール付与', t10:'バニティURL変更', t11:'Webhook作成', t12:'@everyone & @here Ping',
-    band1:'保護サーバー', band2:'保護ユーザー', band3:'平均Ping', band4:'アクティブ保護',
+    band1:'保護サーバー', band2:'保護ユーザー', band3:'平均Ping', band4:'稼働時間',
     why_label:'優位性', why_title:'なぜFenixExelent？', why_sub:'モデレーターによる、モデレーターのための設計。セキュリティに妥協なし。',
     w1t:'モダンダッシュボード', w1d:'完全な設定制御付きウェブパネル',
     w2t:'高度なモデレーション', w2d:'手動介入なしの完全自動化',
     w3t:'自動保護', w3d:'脅威検出後ミリ秒で対応',
     w4t:'簡単セットアップ', w4d:'5分以内に稼働可能',
-    w5t:'高パフォーマンス', w5d:'50ms以下のPing、99.9%稼働率',
+    w5t:'高パフォーマンス', w5d:'実際のPingと稼働時間をリアルタイム更新',
     w6t:'無料アクセス', w6d:'隠れたコストなしの完全保護',
     cta_title:'今すぐ参加', cta_desc:'FenixExelentをサーバーに追加して、コミュニティに最高レベルのセキュリティを提供しましょう。無料、いつでも。', cta_btn:'FenixExelentを追加',
-    b1:'無料', b2:'簡単設定', b3:'24/7保護', b4:'Ping <50ms',
+    b1:'無料', b2:'簡単設定', b3:'自動保護', b4:'ライブ統計',
     footer_tagline:'Discord サーバー保護', footer_privacy:'プライバシー', footer_terms:'利用規約', footer_support:'サポート', footer_discord:'Discord'
   },
   ko: {
@@ -1503,16 +1559,16 @@ const translations = {
     f6_name:'웹 대시보드', f6_desc:'직관적인 웹 패널로 모든 설정을 관리하세요. 로그, 통계, 구성 — 한 곳에서, 모든 기기에서.',
     thr_label:'지능형 감지', thr_title:'우리가 차단하는 위협', thr_sub:'FenixExelent는 서버의 모든 작업을 모니터링하고 피해가 발생하기 전에 즉시 반응합니다.',
     t1:'봇 추가', t2:'멤버 차단', t3:'멤버 추방', t4:'채널 생성', t5:'채널 삭제', t6:'역할 생성', t7:'역할 삭제', t8:'위험한 권한', t9:'위험한 역할 부여', t10:'Vanity URL 변경', t11:'웹훅 생성', t12:'@everyone & @here 핑',
-    band1:'보호된 서버', band2:'보호된 사용자', band3:'평균 핑', band4:'활성 보호',
+    band1:'보호된 서버', band2:'보호된 사용자', band3:'평균 핑', band4:'가동 시간',
     why_label:'장점', why_title:'왜 FenixExelent인가?', why_sub:'모더레이터에 의한, 모더레이터를 위한 설계. 보안에 타협 없음.',
     w1t:'현대적인 대시보드', w1d:'완전한 설정 제어를 갖춘 웹 패널',
     w2t:'고급 모더레이션', w2d:'수동 개입 없는 완전 자동화',
     w3t:'자동 보호', w3d:'위협 감지 후 밀리초 내에 반응',
     w4t:'쉬운 설정', w4d:'5분 이내에 작동 가능',
-    w5t:'고성능', w5d:'50ms 미만 핑, 99.9% 가동 시간',
+    w5t:'고성능', w5d:'실제 지연 시간과 가동 시간을 실시간 업데이트',
     w6t:'무료 접근', w6d:'숨겨진 비용 없는 완전한 보호',
     cta_title:'지금 가입하기', cta_desc:'FenixExelent를 서버에 추가하고 커뮤니티에 최고 수준의 보안을 제공하세요. 무료, 항상.', cta_btn:'FenixExelent 추가',
-    b1:'무료', b2:'쉬운 설정', b3:'24/7 보호', b4:'핑 <50ms',
+    b1:'무료', b2:'쉬운 설정', b3:'자동 보호', b4:'실시간 통계',
     footer_tagline:'Discord 서버 보호', footer_privacy:'개인정보', footer_terms:'이용약관', footer_support:'지원', footer_discord:'Discord'
   },
   zh: {
@@ -1530,16 +1586,16 @@ const translations = {
     f6_name:'网页面板', f6_desc:'通过直观的网页面板管理所有设置。日志、统计和配置——在一个地方，从任何设备。',
     thr_label:'智能检测', thr_title:'我们拦截的威胁', thr_sub:'FenixExelent监控服务器上的每一个操作，在造成损害之前立即响应。',
     t1:'添加机器人', t2:'封禁成员', t3:'踢出成员', t4:'创建频道', t5:'删除频道', t6:'创建身份组', t7:'删除身份组', t8:'危险权限', t9:'赋予危险身份组', t10:'更改Vanity URL', t11:'创建Webhook', t12:'@everyone & @here',
-    band1:'受保护服务器', band2:'受保护用户', band3:'平均延迟', band4:'主动保护',
+    band1:'受保护服务器', band2:'受保护用户', band3:'平均延迟', band4:'运行时间',
     why_label:'优势', why_title:'为何选择FenixExelent？', why_sub:'由管理员为管理员设计。安全方面零妥协。',
     w1t:'现代面板', w1d:'具有完整设置控制的网页面板',
     w2t:'高级管理', w2d:'无需人工干预的完全自动化',
     w3t:'自动保护', w3d:'检测到威胁后毫秒内响应',
     w4t:'简易设置', w4d:'5分钟内即可运行',
-    w5t:'高性能', w5d:'延迟低于50ms，99.9%正常运行时间',
+    w5t:'高性能', w5d:'实时更新真实延迟和运行时间',
     w6t:'免费访问', w6d:'无隐藏费用的完整保护',
     cta_title:'立即加入', cta_desc:'将FenixExelent添加到您的服务器，为您的社区提供最高级别的安全保护。免费，永远。', cta_btn:'添加FenixExelent',
-    b1:'免费', b2:'简易设置', b3:'24/7保护', b4:'延迟<50ms',
+    b1:'免费', b2:'简易设置', b3:'自动保护', b4:'实时统计',
     footer_tagline:'Discord服务器保护', footer_privacy:'隐私政策', footer_terms:'服务条款', footer_support:'支持', footer_discord:'Discord'
   },
   ar: {
@@ -1557,27 +1613,48 @@ const translations = {
     f6_name:'لوحة الويب', f6_desc:'أدر جميع الإعدادات عبر لوحة ويب سهلة الاستخدام. السجلات والإحصائيات والتكوين — في مكان واحد، من أي جهاز.',
     thr_label:'الكشف الذكي', thr_title:'التهديدات التي نحظرها', thr_sub:'يراقب FenixExelent كل إجراء على الخادم ويستجيب فوراً قبل وقوع أي ضرر.',
     t1:'إضافة بوتات', t2:'حظر الأعضاء', t3:'طرد الأعضاء', t4:'إنشاء قنوات', t5:'حذف قنوات', t6:'إنشاء أدوار', t7:'حذف أدوار', t8:'صلاحيات خطرة', t9:'منح أدوار خطرة', t10:'تغيير Vanity URL', t11:'إنشاء Webhooks', t12:'بينج @everyone و @here',
-    band1:'خوادم محمية', band2:'مستخدمون محميون', band3:'متوسط البينج', band4:'حماية نشطة',
+    band1:'خوادم محمية', band2:'مستخدمون محميون', band3:'متوسط البينج', band4:'مدة التشغيل',
     why_label:'الميزة', why_title:'لماذا FenixExelent؟', why_sub:'صُمم بواسطة المشرفين، للمشرفين. لا تنازلات في الأمان.',
     w1t:'لوحة تحكم حديثة', w1d:'لوحة ويب مع تحكم كامل في الإعدادات',
     w2t:'إشراف متقدم', w2d:'أتمتة كاملة دون تدخل يدوي',
     w3t:'حماية تلقائية', w3d:'يستجيب في ميلي ثانية بعد اكتشاف التهديد',
     w4t:'إعداد سهل', w4d:'جاهز للعمل في أقل من 5 دقائق',
-    w5t:'أداء عالٍ', w5d:'بينج أقل من 50ms، توفر 99.9%',
+    w5t:'أداء عالٍ', w5d:'يتم تحديث زمن الاستجابة ومدة التشغيل الفعليين مباشرة',
     w6t:'وصول مجاني', w6d:'حماية كاملة بدون تكاليف خفية',
     cta_title:'انضم اليوم', cta_desc:'أضف FenixExelent إلى خادمك ووفر لمجتمعك أعلى مستوى من الأمان. مجاناً، دائماً.', cta_btn:'إضافة FenixExelent',
-    b1:'مجاني', b2:'إعداد سهل', b3:'حماية 24/7', b4:'بينج <50ms',
+    b1:'مجاني', b2:'إعداد سهل', b3:'حماية تلقائية', b4:'إحصاءات مباشرة',
     footer_tagline:'حماية خادم Discord', footer_privacy:'الخصوصية', footer_terms:'الشروط', footer_support:'الدعم', footer_discord:'Discord'
   }
 };
 
+const languageMeta = {
+  pl:{ name:'Polski', locale:'pl-PL' }, en:{ name:'English', locale:'en-US' },
+  de:{ name:'Deutsch', locale:'de-DE' }, fr:{ name:'Français', locale:'fr-FR' },
+  es:{ name:'Español', locale:'es-ES' }, it:{ name:'Italiano', locale:'it-IT' },
+  pt:{ name:'Português', locale:'pt-PT' }, ru:{ name:'Русский', locale:'ru-RU' },
+  nl:{ name:'Nederlands', locale:'nl-NL' }, tr:{ name:'Türkçe', locale:'tr-TR' },
+  uk:{ name:'Українська', locale:'uk-UA' }, ja:{ name:'日本語', locale:'ja-JP' },
+  ko:{ name:'한국어', locale:'ko-KR' }, zh:{ name:'中文', locale:'zh-CN' },
+  ar:{ name:'العربية', locale:'ar-SA' }
+};
+
 let currentLang = 'pl';
-function setLang(lang) {
+let latestStats = null;
+
+function setLang(lang, { persist = true } = {}) {
+  if (!translations[lang] || !languageMeta[lang]) return;
   currentLang = lang;
+  const meta = languageMeta[lang];
+  const languageButton = document.getElementById('langBtn');
   document.getElementById('currentLangLabel').textContent = lang.toUpperCase();
-  document.querySelectorAll('.lang-opt').forEach(b => b.classList.toggle('active', b.textContent === lang.toUpperCase()));
-  document.getElementById('langMenu').classList.remove('open');
-  document.getElementById('langChevron').style.transform = '';
+  languageButton.setAttribute('aria-label', `${meta.name} (${lang.toUpperCase()})`);
+  languageButton.title = meta.name;
+  document.querySelectorAll('.lang-opt').forEach(button => {
+    const selected = button.dataset.lang === lang;
+    button.classList.toggle('active', selected);
+    button.setAttribute('aria-selected', String(selected));
+  });
+  closeLangMenu({ focusButton: persist });
   const t = translations[lang];
   document.querySelectorAll('[data-i18n]').forEach(el => {
     const key = el.getAttribute('data-i18n');
@@ -1590,7 +1667,90 @@ function setLang(lang) {
     ctaTitle.innerHTML = words.join(' ') + ' <span>' + last + '</span>';
   }
   document.documentElement.lang = lang;
+  document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+  document.title = `FenixExelent – ${t.hero_badge}`;
+  if (persist) {
+    try { localStorage.setItem('fenix.language', lang); } catch {}
+  }
+  if (latestStats) renderLiveStats(latestStats);
 }
+
+function resolveInitialLanguage() {
+  const supported = new Set(Object.keys(translations));
+  const normalize = value => String(value || '').toLowerCase().split('-')[0];
+  let stored = '';
+  try { stored = localStorage.getItem('fenix.language') || ''; } catch {}
+  const requested = new URLSearchParams(location.search).get('lang');
+  const candidates = [requested, stored, ...(navigator.languages || [navigator.language]), 'pl'];
+  return candidates.map(normalize).find(language => supported.has(language)) || 'pl';
+}
+
+function formatInteger(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < 0) return '—';
+  return new Intl.NumberFormat(languageMeta[currentLang].locale, { maximumFractionDigits: 0 }).format(Math.round(number));
+}
+
+function formatUptime(value) {
+  const totalSeconds = Number(value);
+  if (!Number.isFinite(totalSeconds) || totalSeconds < 0) return '—';
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  if (totalMinutes === 0) return '<1m';
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
+function renderLiveStats(stats) {
+  const ready = stats.discordReady === true;
+  const guilds = ready ? formatInteger(stats.guilds) : '—';
+  const members = ready ? formatInteger(stats.memberships ?? stats.members ?? stats.users) : '—';
+  const hasPing = stats.ping !== null && stats.ping !== undefined && stats.ping !== '';
+  const rawPing = hasPing ? Number(stats.ping) : Number.NaN;
+  const ping = ready && Number.isFinite(rawPing) && rawPing >= 0 ? formatInteger(rawPing) : '—';
+  const uptime = formatUptime(stats.uptime);
+
+  document.getElementById('heroGuilds').textContent = guilds;
+  document.getElementById('heroMembers').textContent = members;
+  document.getElementById('heroPing').textContent = ping;
+  document.getElementById('heroPingUnit').textContent = ping === '—' ? '' : 'ms';
+  document.getElementById('bandGuilds').textContent = guilds;
+  document.getElementById('bandMembers').textContent = members;
+  document.getElementById('bandPing').textContent = ping === '—' ? '—' : `${ping} ms`;
+  document.getElementById('bandUptime').textContent = uptime;
+
+  const t = translations[currentLang];
+  const statusText = `${t.stat1}: ${guilds}. ${t.stat2}: ${members}. ${t.stat3}: ${ping === '—' ? ping : `${ping} ms`}. ${t.band4}: ${uptime}.`;
+  const statusRegion = document.getElementById('statsLiveStatus');
+  if (statusRegion.textContent !== statusText) statusRegion.textContent = statusText;
+
+  const generatedAt = new Date(stats.generatedAt || Date.now());
+  if (!Number.isNaN(generatedAt.getTime())) {
+    const title = generatedAt.toLocaleString(languageMeta[currentLang].locale);
+    document.querySelectorAll('.stat-val, .band-val').forEach(element => { element.title = title; });
+  }
+}
+
+async function loadLiveStats() {
+  try {
+    const response = await fetch('/api/stats', { cache: 'no-store', headers: { Accept: 'application/json' } });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    latestStats = await response.json();
+    renderLiveStats(latestStats);
+  } catch (error) {
+    console.warn('Live statistics are temporarily unavailable:', error.message);
+  }
+}
+
+setLang(resolveInitialLanguage(), { persist: false });
+loadLiveStats();
+setInterval(loadLiveStats, 60_000);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') loadLiveStats();
+});
 </script>
 </body>
 </html>

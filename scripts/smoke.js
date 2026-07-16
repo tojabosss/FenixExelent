@@ -47,8 +47,20 @@ async function main() {
   const dashboard = await (await fetch(`http://127.0.0.1:${port}/dashboard.html`)).text();
   assert(dashboard.includes('AntiScam i OCR'));
   assert(dashboard.includes('Centrum bezpieczeństwa'));
+  const landing = await (await fetch(`http://127.0.0.1:${port}/`)).text();
+  assert(landing.includes('id="heroGuilds"'));
+  assert(landing.includes("fetch('/api/stats'"));
   const statsResponse = await fetch(`http://127.0.0.1:${port}/api/stats`);
   assert.strictEqual(statsResponse.status, 200);
+  assert.strictEqual(statsResponse.headers.get('cache-control'), 'no-store');
+  const stats = await statsResponse.json();
+  assert.strictEqual(stats.discordReady, false);
+  assert.strictEqual(stats.guilds, 0);
+  assert.strictEqual(stats.memberships, 0);
+  assert.strictEqual(stats.members, 0);
+  assert.strictEqual(stats.ping, null);
+  assert(Number.isFinite(stats.uptime));
+  assert(!Number.isNaN(Date.parse(stats.generatedAt)));
   console.log('OK: aplikacja, /ping, dashboard i API statystyk.');
 }
 

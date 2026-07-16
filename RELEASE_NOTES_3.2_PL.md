@@ -13,3 +13,5 @@
 - Dodano trwałe sesje PostgreSQL oraz bezpieczniejsze ciasteczka produkcyjne.
 - PostgreSQL jest opcjonalny; lokalnie działa zapis w `data/config.json`.
 - Dodano komplet testów `npm test`.
+- Zastąpiono marketingowe liczby rzeczywistymi danymi Discord: serwery, członkowie, ping i czas działania.
+- Dodano działający wybór 15 języków z automatycznym wykrywaniem, obsługą klawiatury i zapamiętywaniem ustawienia.

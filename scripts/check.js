@@ -59,6 +59,15 @@ const dashboard = fs.readFileSync(path.join(root, 'dashboard', 'public', 'dashbo
 for (const feature of ['AntiSpam', 'AntiRaid', 'AntiScam i OCR', 'AntiAlt', 'Reaction Roles', 'Channel Guard', 'Weryfikacja', 'Tickety', 'Centrum bezpieczeństwa', 'Moderacja']) {
   assert(dashboard.includes(feature), `Dashboard is missing ${feature}`);
 }
+
+const landing = fs.readFileSync(path.join(root, 'dashboard', 'public', 'index.html'), 'utf8');
+for (const id of ['heroGuilds', 'heroMembers', 'heroPing', 'bandGuilds', 'bandMembers', 'bandPing', 'bandUptime']) {
+  assert(landing.includes(`id="${id}"`), `Landing page is missing live statistic ${id}`);
+}
+assert(landing.includes("fetch('/api/stats'"), 'Landing page must load live statistics');
+assert(landing.includes("localStorage.setItem('fenix.language'"), 'Language selection must be persisted');
+assert(!landing.includes('1<span>K+</span>') && !landing.includes('50<span>K+</span>'), 'Landing page contains fake statistics');
+
 function isTrackedByGit(relativePath) {
   if (!fs.existsSync(path.join(root, '.git'))) return false;
   const result = spawnSync('git', ['-C', root, 'ls-files', '--error-unmatch', '--', relativePath], { encoding: 'utf8' });

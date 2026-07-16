@@ -58,6 +58,7 @@ Po aktualizacji koniecznie wykonaj `npm run deploy`, aby Discord otrzymał nowe 
 
 Panel obsługuje:
 
+- publiczne statystyki na żywo oraz zapamiętywany wybór 15 języków,
 - AntiSpam, AntiRaid i lockdown,
 - AntiScam, OCR oraz białą/czarną listę domen,
 - AntiAlt i punkty ryzyka,

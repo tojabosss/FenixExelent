@@ -346,13 +346,35 @@ async function startDashboardServer(options) {
   app.get('/about', (req, res) => res.type('html').send(policyHtml('about')));
   app.get('/support', (req, res) => res.type('html').send(policyHtml('support')));
 
+  function liveStatsPayload() {
+    const discordReady = client.isReady();
+    const members = client.guilds.cache.reduce((sum, guild) => sum + Math.max(0, Number(guild.memberCount) || 0), 0);
+    const rawPing = Number(client.ws.ping);
+    const ping = discordReady && Number.isFinite(rawPing) && rawPing >= 0 ? Math.round(rawPing) : null;
+    const uptime = Math.floor(process.uptime());
+    return {
+      discordReady,
+      guilds: client.guilds.cache.size,
+      memberships: members,
+      members,
+      users: members,
+      bots: null,
+      total: members,
+      uptime,
+      ping,
+      generatedAt: new Date().toISOString(),
+      security: aggregateSecurityStats(),
+    };
+  }
+
   app.get('/api/stats', (req, res) => {
-    const users = client.guilds.cache.reduce((sum, guild) => sum + (guild.memberCount || 0), 0);
-    res.json({ guilds: client.guilds.cache.size, users, bots: null, total: users, uptime: Math.floor(process.uptime()), ping: client.ws.ping ?? -1, security: aggregateSecurityStats() });
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(liveStatsPayload());
   });
   app.get('/api/public-status', (req, res) => {
-    const users = client.guilds.cache.reduce((sum, guild) => sum + (guild.memberCount || 0), 0);
-    res.json({ name: client.user?.username || 'FenixExelentSecurity', guilds: client.guilds.cache.size, users, uptime: Math.floor(process.uptime()), uptimeText: formatUptime(process.uptime()), ping: client.ws.ping ?? -1, security: aggregateSecurityStats() });
+    res.setHeader('Cache-Control', 'no-store');
+    const stats = liveStatsPayload();
+    res.json({ name: client.user?.username || 'FenixExelentSecurity', ...stats, uptimeText: formatUptime(stats.uptime) });
   });
   app.get('/ping', (req, res) => res.json({ ok: true, discordReady: client.isReady(), storage: database.databaseType, uptime: Math.floor(process.uptime()) }));
 
