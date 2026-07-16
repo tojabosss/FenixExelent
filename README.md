@@ -51,6 +51,10 @@ Panel jest dostępny pod `/dashboard.html`. Logowanie wymaga konta z uprawnienie
 - Komendy moderacyjne wymagają uprawnień moderatora lub skonfigurowanej roli moderatora.
 - Publiczne pozostają m.in. pomoc, status, zgłaszanie scamów i wysyłanie odwołania.
 - Kontrola działa jednocześnie po stronie Discorda i w kodzie bota.
+- Na serwerze `SUPPORT_GUILD_ID` wszystkie komendy są prywatne: dostęp ma tylko `OWNER_ID` oraz `DEVELOPER_ID` lub `DEVELOPER_ROLE_ID`.
+- Publiczne przyciski weryfikacji, języka i otwierania ticketów nadal działają dla użytkowników supportu.
+
+Jeżeli rola Developer nie ma systemowego uprawnienia wymaganego przez daną komendę, zezwól jej na komendy w **Ustawienia serwera → Integracje → FenixExelent → Komendy**.
 
 Po aktualizacji koniecznie wykonaj `npm run deploy`, aby Discord otrzymał nowe ograniczenia uprawnień.
 

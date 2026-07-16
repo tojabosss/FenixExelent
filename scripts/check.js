@@ -49,6 +49,25 @@ assert(applicationSource.includes('.setCustomId(`supportlang:${language.code}`)'
 assert(applicationSource.includes("['Zweryfikowany', 'Verified', 'Członek', 'Member']"), 'Verified role recovery is missing');
 assert(applicationSource.includes('await member.roles.set([...finalRoleIds]'), 'Support language roles must be updated atomically');
 
+const commandAccessStart = applicationSource.indexOf('function canUseCommand');
+const commandAccessEnd = applicationSource.indexOf('function canUseStaffButton', commandAccessStart);
+assert(commandAccessStart >= 0 && commandAccessEnd > commandAccessStart, 'Command access control is missing');
+const commandAccessSource = applicationSource.slice(commandAccessStart, commandAccessEnd);
+const supportGateIndex = commandAccessSource.indexOf('isOfficialSupportGuild(interaction.guild)');
+const publicGateIndex = commandAccessSource.indexOf('PUBLIC_COMMANDS.has(commandName)');
+assert(supportGateIndex >= 0 && supportGateIndex < publicGateIndex, 'Official support guild must be restricted before public commands');
+assert(commandAccessSource.includes('return isOwnerOrDeveloper(interaction)'), 'Support commands must be limited to owner/developer');
+assert(applicationSource.includes("process.env.DEVELOPER_ID || ''"), 'Developer user access is missing');
+assert(applicationSource.includes("process.env.DEVELOPER_ROLE_ID || ''"), 'Developer role access is missing');
+assert(applicationSource.includes('isOfficialSupportGuild(message.guild) && !isOwnerOrDeveloper(message)'), 'Text commands bypass support access control');
+assert(applicationSource.includes('function canUseStaffButton') && applicationSource.includes('function canUseAdminButton'), 'Privileged buttons bypass support access control');
+assert(applicationSource.includes("configuredOwnerId || (isOfficialSupportGuild(context?.guild) ? DEFAULT_OWNER_ID : '')"), 'Default owner access must be limited to the support guild');
+const adminButtonStart = applicationSource.indexOf('function canUseAdminButton');
+const adminButtonEnd = applicationSource.indexOf('function getAccountAgeDays', adminButtonStart);
+const adminButtonSource = applicationSource.slice(adminButtonStart, adminButtonEnd);
+assert(adminButtonSource.includes('PermissionFlagsBits.Administrator'), 'Lockdown must keep its original Administrator requirement outside support');
+assert(!adminButtonSource.includes('isAdminMember('), 'Support button gate must not expand permissions on other guilds');
+
 const handled = new Set([...applicationSource.matchAll(/commandName\s*===\s*'([^']+)'/g)].map(match => match[1]));
 for (const match of applicationSource.matchAll(/\[([^\]]+)\]\.includes\(commandName\)/gs)) {
   for (const item of match[1].matchAll(/'([^']+)'/g)) handled.add(item[1]);

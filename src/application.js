@@ -84,6 +84,7 @@ const scamReports = new Map(); // reportId -> report data
 // SUPPORT_GUILD_ID z Rendera ma pierwszeństwo. Wartość domyślna zachowuje
 // zgodność z istniejącym oficjalnym serwerem i jego starszym panelem języków.
 const DEFAULT_SUPPORT_GUILD_ID = '1492793536930910310';
+const DEFAULT_OWNER_ID = '1075478964505677824';
 const SUPPORT_LANGUAGE_DEFINITIONS = Object.freeze([
   { code: 'pl', label: 'Polski',   emoji: '🇵🇱', roleName: '🌍 Polski',   channelName: '💬│chat-pl' },
   { code: 'en', label: 'English',  emoji: '🇬🇧', roleName: '🌍 English',  channelName: '💬│chat-en' },
@@ -386,14 +387,27 @@ function isAdminMember(member, gc) {
   return !!(gc.adminRole && member.roles.cache.has(gc.adminRole));
 }
 
-function isOwnerOrDeveloper(interaction) {
-  const ownerId = String(process.env.OWNER_ID || '').trim();
+function memberHasDiscordRole(member, roleId) {
+  if (!member || !roleId) return false;
+  if (member.roles?.cache?.has(roleId)) return true;
+  return Array.isArray(member.roles) && member.roles.includes(roleId);
+}
+
+function isOwnerOrDeveloper(context) {
+  const userId = context?.user?.id || context?.author?.id || '';
+  const configuredOwnerId = String(process.env.OWNER_ID || '').trim();
+  const ownerId = configuredOwnerId || (isOfficialSupportGuild(context?.guild) ? DEFAULT_OWNER_ID : '');
+  const developerId = String(process.env.DEVELOPER_ID || '').trim();
   const developerRoleId = String(process.env.DEVELOPER_ROLE_ID || '').trim();
-  return (ownerId && interaction.user?.id === ownerId) ||
-    (developerRoleId && interaction.member?.roles?.cache?.has(developerRoleId));
+  const isDeveloper = (developerId && userId === developerId) ||
+    memberHasDiscordRole(context?.member, developerRoleId);
+  return userId === ownerId || (isOfficialSupportGuild(context?.guild) && isDeveloper);
 }
 
 function canUseCommand(interaction, gc, commandName) {
+  // Na oficjalnym serwerze supportu żadna komenda (także publiczna) nie omija
+  // prywatnej listy dostępu. Na pozostałych serwerach obowiązują zwykłe role.
+  if (isOfficialSupportGuild(interaction.guild)) return isOwnerOrDeveloper(interaction);
   if (PUBLIC_COMMANDS.has(commandName)) return true;
   if (isOwnerOrDeveloper(interaction)) return true;
   if (commandName === 'appeal') {
@@ -408,6 +422,16 @@ function canUseCommand(interaction, gc, commandName) {
   }
   if (ADMIN_COMMANDS.has(commandName)) return isAdminMember(interaction.member, gc);
   return isStaffMember(interaction.member, gc);
+}
+
+function canUseStaffButton(interaction, gc) {
+  if (isOfficialSupportGuild(interaction.guild)) return isOwnerOrDeveloper(interaction);
+  return isStaffMember(interaction.member, gc);
+}
+
+function canUseAdminButton(interaction) {
+  if (isOfficialSupportGuild(interaction.guild)) return isOwnerOrDeveloper(interaction);
+  return Boolean(interaction.member?.permissions?.has(PermissionFlagsBits.Administrator));
 }
 
 function getAccountAgeDays(user) {
@@ -1163,7 +1187,10 @@ client.on('messageCreate', async (message) => {
   const resolvedCommand = aliases[command] || command;
   if (!['!rolepanel setup', '!rolepanel status', '!rolepanel off'].includes(resolvedCommand)) return;
 
-  if (!canManageReactionRoles(message)) {
+  if (isOfficialSupportGuild(message.guild) && !isOwnerOrDeveloper(message)) {
+    return message.reply('❌ Na serwerze supportu tej komendy może użyć tylko właściciel bota lub Developer.').catch(() => {});
+  }
+  if (!isOfficialSupportGuild(message.guild) && !canManageReactionRoles(message)) {
     return message.reply('❌ Tej komendy może użyć tylko właściciel serwera lub administrator.').catch(() => {});
   }
 
@@ -2096,7 +2123,10 @@ client.on('interactionCreate', async (interaction) => {
   const { commandName } = interaction;
 
   if (!canUseCommand(interaction, gc, commandName)) {
-    return interaction.reply({ content: '❌ Nie masz uprawnień do użycia tej komendy.', flags: MessageFlags.Ephemeral });
+    const content = isOfficialSupportGuild(interaction.guild)
+      ? '❌ Na oficjalnym serwerze supportu komend może używać tylko właściciel bota lub Developer.'
+      : '❌ Nie masz uprawnień do użycia tej komendy.';
+    return interaction.reply({ content, flags: MessageFlags.Ephemeral });
   }
 
   try {
@@ -3951,7 +3981,7 @@ async function handleButton(interaction, gc) {
   }
 
   if (interaction.customId.startsWith('appeal:')) {
-    if (!isStaffMember(interaction.member, gc)) {
+    if (!canUseStaffButton(interaction, gc)) {
       return interaction.reply({ content: '❌ Tylko staff może obsłużyć appeal.', flags: MessageFlags.Ephemeral });
     }
     const [, action, appealId] = interaction.customId.split(':');
@@ -3982,7 +4012,7 @@ async function handleButton(interaction, gc) {
   }
 
   if (interaction.customId.startsWith('scamreport:')) {
-    if (!isStaffMember(interaction.member, gc)) {
+    if (!canUseStaffButton(interaction, gc)) {
       return interaction.reply({ content: '❌ Tylko staff może obsłużyć zgłoszenie scam.', flags: MessageFlags.Ephemeral });
     }
 
@@ -4057,7 +4087,7 @@ async function handleButton(interaction, gc) {
 
   // ── Lockdown Toggle ──
   if (interaction.customId === 'lockdown_toggle') {
-    if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+    if (!canUseAdminButton(interaction)) {
       return interaction.reply({ content: '❌ Brak uprawnień administratora.', flags: MessageFlags.Ephemeral });
     }
     const aktywny = !gc.antiraid.lockdownActive;
@@ -4239,9 +4269,12 @@ async function handleButton(interaction, gc) {
 
   // ── Ticket Claim ──
   if (interaction.customId === 'ticket_claim') {
-    const hasSupport = gc.tickets.supportRoleId && interaction.member.roles.cache.has(gc.tickets.supportRoleId);
+    const hasSupport = memberHasDiscordRole(interaction.member, gc.tickets.supportRoleId);
     const hasManage  = interaction.member.permissions.has(PermissionFlagsBits.ManageChannels);
-    if (!hasSupport && !hasManage) {
+    const canClaim = isOfficialSupportGuild(interaction.guild)
+      ? isOwnerOrDeveloper(interaction)
+      : hasSupport || hasManage;
+    if (!canClaim) {
       return interaction.reply({ content: '❌ Tylko support może przejąć ticket.', flags: MessageFlags.Ephemeral });
     }
     const safeName = interaction.user.username.toLowerCase().replace(/\s+/g, '-');

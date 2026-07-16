@@ -16,3 +16,4 @@
 - Zastąpiono marketingowe liczby rzeczywistymi danymi Discord: serwery, członkowie, ping i czas działania.
 - Dodano działający wybór 15 języków z automatycznym wykrywaniem, obsługą klawiatury i zapamiętywaniem ustawienia.
 - Przywrócono przyciski językowe Discord na serwerze supportu; stary panel odzyskuje role i kanały po restarcie oraz odpowiada bez przekroczenia limitu czasu Discorda.
+- Na oficjalnym serwerze supportu wszystkie komendy oraz administracyjne przyciski są dostępne wyłącznie dla właściciela bota i skonfigurowanego Developera; zasady na innych serwerach pozostają bez zmian.
