@@ -15,3 +15,4 @@
 - Dodano komplet testów `npm test`.
 - Zastąpiono marketingowe liczby rzeczywistymi danymi Discord: serwery, członkowie, ping i czas działania.
 - Dodano działający wybór 15 języków z automatycznym wykrywaniem, obsługą klawiatury i zapamiętywaniem ustawienia.
+- Przywrócono przyciski językowe Discord na serwerze supportu; stary panel odzyskuje role i kanały po restarcie oraz odpowiada bez przekroczenia limitu czasu Discorda.

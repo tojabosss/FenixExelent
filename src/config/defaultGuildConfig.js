@@ -88,6 +88,15 @@ function defaultGuildConfig() {
       panelChannelId: null,
       openTickets: {},
     },
+    supportLanguages: {
+      enabled: true,
+      guildId: null,
+      verifyChannelId: null,
+      categoryId: null,
+      supported: ['pl', 'en', 'tr', 'de', 'fr'],
+      roleIds: {},
+      channelIds: {},
+    },
 
 verification: {
   enabled: false,

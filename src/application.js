@@ -81,6 +81,17 @@ const recentJoinMap = new Map(); // guildId:userId -> timestamp
 const fastJoinRiskGiven = new Set(); // guildId:userId
 const scamReports = new Map(); // reportId -> report data
 
+// SUPPORT_GUILD_ID z Rendera ma pierwszeństwo. Wartość domyślna zachowuje
+// zgodność z istniejącym oficjalnym serwerem i jego starszym panelem języków.
+const DEFAULT_SUPPORT_GUILD_ID = '1492793536930910310';
+const SUPPORT_LANGUAGE_DEFINITIONS = Object.freeze([
+  { code: 'pl', label: 'Polski',   emoji: '🇵🇱', roleName: '🌍 Polski',   channelName: '💬│chat-pl' },
+  { code: 'en', label: 'English',  emoji: '🇬🇧', roleName: '🌍 English',  channelName: '💬│chat-en' },
+  { code: 'tr', label: 'Türkçe',   emoji: '🇹🇷', roleName: '🌍 Türkçe',   channelName: '💬│chat-tr' },
+  { code: 'de', label: 'Deutsch',  emoji: '🇩🇪', roleName: '🌍 Deutsch',  channelName: '💬│chat-de' },
+  { code: 'fr', label: 'Français', emoji: '🇫🇷', roleName: '🌍 Français', channelName: '💬│chat-fr' },
+]);
+
 // ─── HELPERS ───────────────────────────────────────────────────────────────
 function embed(color, title, desc, fields = []) {
   const e = new EmbedBuilder()
@@ -91,6 +102,167 @@ function embed(color, title, desc, fields = []) {
     .setFooter({ text: 'FenixExelent 🔥' });
   if (fields.length) e.addFields(fields);
   return e;
+}
+
+function getSupportGuildId() {
+  return String(process.env.SUPPORT_GUILD_ID || DEFAULT_SUPPORT_GUILD_ID).trim();
+}
+
+function isOfficialSupportGuild(guild) {
+  return Boolean(guild?.id && guild.id === getSupportGuildId());
+}
+
+function ensureSupportLanguagesConfig(gc) {
+  const fallbackCodes = SUPPORT_LANGUAGE_DEFINITIONS.map(language => language.code);
+  const cfg = gc.supportLanguages && typeof gc.supportLanguages === 'object'
+    ? gc.supportLanguages
+    : {};
+
+  cfg.enabled = cfg.enabled !== false;
+  cfg.guildId = typeof cfg.guildId === 'string' ? cfg.guildId : null;
+  cfg.verifyChannelId = typeof cfg.verifyChannelId === 'string' ? cfg.verifyChannelId : null;
+  cfg.categoryId = typeof cfg.categoryId === 'string' ? cfg.categoryId : null;
+  cfg.roleIds = cfg.roleIds && typeof cfg.roleIds === 'object' && !Array.isArray(cfg.roleIds) ? cfg.roleIds : {};
+  cfg.channelIds = cfg.channelIds && typeof cfg.channelIds === 'object' && !Array.isArray(cfg.channelIds) ? cfg.channelIds : {};
+
+  const requestedCodes = Array.isArray(cfg.supported) ? cfg.supported : fallbackCodes;
+  cfg.supported = [...new Set(requestedCodes.filter(code => fallbackCodes.includes(code)))];
+  if (!cfg.supported.length) cfg.supported = fallbackCodes;
+
+  gc.supportLanguages = cfg;
+  return cfg;
+}
+
+function getSupportLanguageDefinitions(gc) {
+  const supported = new Set(ensureSupportLanguagesConfig(gc).supported);
+  return SUPPORT_LANGUAGE_DEFINITIONS.filter(language => supported.has(language.code));
+}
+
+function normalizeSupportResourceName(value) {
+  return String(value || '')
+    .normalize('NFKC')
+    .toLocaleLowerCase('en-US')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+}
+
+function exactSupportResourceName(value) {
+  return String(value || '').normalize('NFKC').trim().toLocaleLowerCase('en-US');
+}
+
+function findUniqueNamedResource(collection, candidateNames, predicate = () => true) {
+  const resources = [...collection.values()].filter(predicate);
+
+  // Preferujemy pełną nazwę (np. „🌍 Polski”), zanim dopuścimy wariant bez emoji.
+  for (const candidateName of candidateNames) {
+    const exactName = exactSupportResourceName(candidateName);
+    const exactMatches = resources.filter(resource => exactSupportResourceName(resource.name) === exactName);
+    if (exactMatches.length === 1) return exactMatches[0];
+    if (exactMatches.length > 1) return null;
+  }
+
+  // Luźniejsze dopasowanie jest bezpieczne tylko wtedy, gdy wynik jest jednoznaczny.
+  const normalizedNames = new Set(candidateNames.map(normalizeSupportResourceName));
+  const normalizedMatches = resources.filter(resource => normalizedNames.has(normalizeSupportResourceName(resource.name)));
+  return normalizedMatches.length === 1 ? normalizedMatches[0] : null;
+}
+
+function findSupportLanguageRole(guild, cfg, language) {
+  const savedRole = cfg.roleIds?.[language.code]
+    ? guild.roles.cache.get(cfg.roleIds[language.code])
+    : null;
+  if (savedRole && !savedRole.managed) return savedRole;
+
+  return findUniqueNamedResource(
+    guild.roles.cache,
+    [language.roleName, language.label],
+    role => !role.managed
+  );
+}
+
+function findSupportLanguageChannel(guild, cfg, language) {
+  const savedChannel = cfg.channelIds?.[language.code]
+    ? guild.channels.cache.get(cfg.channelIds[language.code])
+    : null;
+  if (savedChannel?.type === ChannelType.GuildText) return savedChannel;
+
+  return findUniqueNamedResource(
+    guild.channels.cache,
+    [language.channelName, `chat-${language.code}`],
+    channel => channel.type === ChannelType.GuildText
+  );
+}
+
+function findVerificationRole(guild, savedRoleId, candidateNames) {
+  const savedRole = savedRoleId ? guild.roles.cache.get(savedRoleId) : null;
+  if (savedRole && !savedRole.managed) return savedRole;
+  return findUniqueNamedResource(guild.roles.cache, candidateNames, role => !role.managed);
+}
+
+async function discoverSupportLanguageResources(guild, gc) {
+  const cfg = ensureSupportLanguagesConfig(gc);
+  const fetchResults = await Promise.allSettled([
+    guild.roles.fetch(),
+    guild.channels.fetch(),
+  ]);
+  for (const result of fetchResults) {
+    if (result.status === 'rejected') logger.warn({ err: result.reason }, 'Support language resource refresh failed');
+  }
+
+  const roles = new Map();
+  const channels = new Map();
+  for (const language of getSupportLanguageDefinitions(gc)) {
+    const role = findSupportLanguageRole(guild, cfg, language);
+    if (role) {
+      roles.set(language.code, role);
+      cfg.roleIds[language.code] = role.id;
+    } else {
+      delete cfg.roleIds[language.code];
+    }
+
+    const channel = findSupportLanguageChannel(guild, cfg, language);
+    if (channel) {
+      channels.set(language.code, channel);
+      cfg.channelIds[language.code] = channel.id;
+    } else {
+      delete cfg.channelIds[language.code];
+    }
+  }
+
+  if (!gc.verification || typeof gc.verification !== 'object') {
+    gc.verification = { enabled: false, roleId: null, unverifiedRoleId: null, channelId: null };
+  }
+  const verifiedRole = findVerificationRole(
+    guild,
+    gc.verification.roleId,
+    ['Zweryfikowany', 'Verified', 'Członek', 'Member']
+  );
+  const unverifiedRole = findVerificationRole(
+    guild,
+    gc.verification.unverifiedRoleId,
+    ['Niezweryfikowany', 'Unverified']
+  );
+  if (verifiedRole) gc.verification.roleId = verifiedRole.id;
+  if (unverifiedRole) gc.verification.unverifiedRoleId = unverifiedRole.id;
+
+  cfg.guildId = guild.id;
+  return { cfg, roles, channels, verifiedRole, unverifiedRole };
+}
+
+function buildSupportLanguageRows(gc) {
+  const definitions = getSupportLanguageDefinitions(gc);
+  const rows = [];
+  for (let index = 0; index < definitions.length; index += 5) {
+    rows.push(new ActionRowBuilder().addComponents(
+      definitions.slice(index, index + 5).map(language => new ButtonBuilder()
+        .setCustomId(`supportlang:${language.code}`)
+        .setLabel(language.label)
+        .setEmoji(language.emoji)
+        .setStyle(ButtonStyle.Primary)
+      )
+    ));
+  }
+  return rows;
 }
 
 async function sendLog(guild, channelId, embedObj) {
@@ -3580,6 +3752,11 @@ Important security alerts and warnings will be posted here.`
 //  VERIFICATION PANEL
 // ═══════════════════════════════════════════════════════════════════════════
 async function sendVerifyPanel(channel) {
+  const gc = channel.guild ? getGuildConfig(channel.guild.id) : null;
+  const supportLanguages = gc ? ensureSupportLanguagesConfig(gc) : null;
+  const isSupportLanguagePanel = Boolean(
+    channel.guild && supportLanguages?.enabled && isOfficialSupportGuild(channel.guild)
+  );
 
   const verifyRow = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
@@ -3588,7 +3765,21 @@ async function sendVerifyPanel(channel) {
       .setStyle(ButtonStyle.Success)
   );
   const components = [verifyRow];
-  const extraDescription = '';
+  let extraDescription = '';
+
+  if (isSupportLanguagePanel) {
+    supportLanguages.guildId = channel.guild.id;
+    supportLanguages.verifyChannelId = channel.id;
+    components.push(...buildSupportLanguageRows(gc));
+    extraDescription = `
+
+━━━━━━━━━━━━━━━━━━━━
+
+🌍 **Wybór języka / Language selection**
+Wybierz język poniżej, aby otrzymać odpowiednią rolę i dostęp do właściwego kanału supportu.
+
+Choose your language below to receive the correct role and access to the right support channel.`;
+  }
 
   await channel.send({
     embeds: [new EmbedBuilder()
@@ -3612,6 +3803,10 @@ By clicking the button, you confirm that you accept the server rules.${extraDesc
     ],
     components,
   });
+
+  if (isSupportLanguagePanel) {
+    await saveConfig().catch(error => logger.error({ err: error }, 'Support language panel config save failed'));
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -3643,6 +3838,93 @@ async function sendTicketPanel(channel) {
 // ═══════════════════════════════════════════════════════════════════════════
 //  BUTTON INTERACTIONS
 // ═══════════════════════════════════════════════════════════════════════════
+async function handleSupportLanguageButton(interaction, gc) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  if (!isOfficialSupportGuild(interaction.guild)) {
+    return interaction.editReply({
+      content: '❌ Ten panel działa tylko na oficjalnym serwerze supportu.',
+    });
+  }
+  if (!ensureSupportLanguagesConfig(gc).enabled) {
+    return interaction.editReply({ content: '❌ Wybór języka jest aktualnie wyłączony.' });
+  }
+
+  const languageCode = String(interaction.customId.split(':')[1] || '').toLowerCase();
+  const language = getSupportLanguageDefinitions(gc).find(item => item.code === languageCode);
+  if (!language) {
+    return interaction.editReply({ content: '❌ Ten język nie jest obsługiwany.' });
+  }
+
+  const { cfg, roles, channels, verifiedRole, unverifiedRole } = await discoverSupportLanguageResources(interaction.guild, gc);
+  const selectedRole = roles.get(language.code);
+  if (!selectedRole) {
+    return interaction.editReply({
+      content: `❌ Nie znaleziono roli **${language.roleName}**. Administrator musi utworzyć tę rolę albo ponownie skonfigurować panel języków.`,
+    });
+  }
+
+  const [member, botMember] = await Promise.all([
+    interaction.guild.members.fetch(interaction.user.id).catch(() => null),
+    interaction.guild.members.fetchMe().catch(() => interaction.guild.members.me),
+  ]);
+  if (!member) {
+    return interaction.editReply({ content: '❌ Nie mogę pobrać Twojego profilu na serwerze.' });
+  }
+  if (!botMember?.permissions.has(PermissionFlagsBits.ManageRoles)) {
+    return interaction.editReply({ content: '❌ Bot nie ma uprawnienia **Zarządzanie rolami**.' });
+  }
+
+  const rolesToAdd = new Map();
+  const rolesToRemove = new Map();
+  if (!member.roles.cache.has(selectedRole.id)) rolesToAdd.set(selectedRole.id, selectedRole);
+  if (verifiedRole && !member.roles.cache.has(verifiedRole.id)) rolesToAdd.set(verifiedRole.id, verifiedRole);
+
+  for (const role of roles.values()) {
+    if (role.id !== selectedRole.id && member.roles.cache.has(role.id)) rolesToRemove.set(role.id, role);
+  }
+  if (unverifiedRole && member.roles.cache.has(unverifiedRole.id)) rolesToRemove.set(unverifiedRole.id, unverifiedRole);
+  for (const roleId of rolesToAdd.keys()) rolesToRemove.delete(roleId);
+
+  const changedRoles = [...rolesToAdd.values(), ...rolesToRemove.values()];
+  const blockedRole = changedRoles.find(role =>
+    role.managed || botMember.roles.highest.comparePositionTo(role) <= 0
+  );
+  if (blockedRole) {
+    return interaction.editReply({
+      content: `❌ Bot nie może zarządzać rolą ${blockedRole}. Przenieś rolę bota wyżej w ustawieniach serwera.`,
+    });
+  }
+
+  try {
+    if (changedRoles.length) {
+      const finalRoleIds = new Set(member.roles.cache.keys());
+      for (const roleId of rolesToRemove.keys()) finalRoleIds.delete(roleId);
+      for (const roleId of rolesToAdd.keys()) finalRoleIds.add(roleId);
+      await member.roles.set([...finalRoleIds], `FenixExelent: wybrano język ${language.code}`);
+    }
+  } catch (error) {
+    logger.error({ err: error, guildId: interaction.guild.id, userId: interaction.user.id }, 'Support language role update failed');
+    return interaction.editReply({
+      content: '❌ Nie udało się zmienić ról. Sprawdź uprawnienie **Zarządzanie rolami** i kolejność ról bota.',
+    });
+  }
+
+  cfg.enabled = true;
+  cfg.guildId = interaction.guild.id;
+  cfg.verifyChannelId = interaction.channelId;
+  await saveConfig().catch(error => logger.error({ err: error }, 'Support language config save failed'));
+
+  const languageChannel = channels.get(language.code);
+  return interaction.editReply({
+    embeds: [embed(
+      '#2ed573',
+      `${language.emoji} Język ustawiony / Language selected`,
+      `Wybrano: **${language.label}**\n${languageChannel ? `Twój kanał: <#${languageChannel.id}>` : 'Rola językowa została nadana.'}`
+    )],
+  });
+}
+
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isButton()) return;
   if (!interaction.guild) return;
@@ -3654,11 +3936,19 @@ client.on('interactionCreate', async (interaction) => {
   } catch (err) {
     logger.buttonError(err, interaction);
     const errMsg = { content: '❌ Wystąpił błąd.', flags: MessageFlags.Ephemeral };
-    if (!interaction.replied && !interaction.deferred) await interaction.reply(errMsg).catch(() => {});
+    if (interaction.deferred) {
+      await interaction.editReply({ content: '❌ Wystąpił błąd podczas obsługi przycisku.' }).catch(() => {});
+    } else if (!interaction.replied) {
+      await interaction.reply(errMsg).catch(() => {});
+    }
   }
 });
 
 async function handleButton(interaction, gc) {
+
+  if (interaction.customId.startsWith('supportlang:')) {
+    return handleSupportLanguageButton(interaction, gc);
+  }
 
   if (interaction.customId.startsWith('appeal:')) {
     if (!isStaffMember(interaction.member, gc)) {

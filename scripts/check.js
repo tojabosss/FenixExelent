@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const { getCommandBuilders } = require('../src/commands');
+const { defaultGuildConfig } = require('../src/config/defaultGuildConfig');
 
 const root = path.join(__dirname, '..');
 const ignored = new Set(['node_modules', 'data', '.git', 'backups', '_archive']);
@@ -31,6 +32,23 @@ const commandNames = commands.map(command => command.name);
 assert.strictEqual(new Set(commandNames).size, commandNames.length, 'Command names must be unique');
 
 const applicationSource = fs.readFileSync(path.join(root, 'src', 'application.js'), 'utf8');
+const supportLanguages = defaultGuildConfig().supportLanguages;
+assert(supportLanguages && typeof supportLanguages === 'object', 'Default config is missing supportLanguages');
+assert.strictEqual(supportLanguages.enabled, true, 'Support languages must be enabled by default on the official guild');
+assert.deepStrictEqual(supportLanguages.supported, ['pl', 'en', 'tr', 'de', 'fr'], 'Invalid support language list');
+assert.deepStrictEqual(supportLanguages.roleIds, {}, 'Support language role IDs must start empty');
+assert.deepStrictEqual(supportLanguages.channelIds, {}, 'Support language channel IDs must start empty');
+
+const supportHandlerStart = applicationSource.indexOf('async function handleSupportLanguageButton');
+assert(supportHandlerStart >= 0, 'Support language button handler is missing');
+const supportHandlerHeader = applicationSource.slice(supportHandlerStart, supportHandlerStart + 1_500);
+assert(supportHandlerHeader.includes('await interaction.deferReply({ flags: MessageFlags.Ephemeral })'), 'Support language handler must acknowledge clicks immediately');
+assert(supportHandlerHeader.includes('isOfficialSupportGuild(interaction.guild)'), 'Support language handler must be limited to the official support guild');
+assert(applicationSource.includes("interaction.customId.startsWith('supportlang:')"), 'Support language buttons are not dispatched');
+assert(applicationSource.includes('.setCustomId(`supportlang:${language.code}`)'), 'Support language panel buttons are missing');
+assert(applicationSource.includes("['Zweryfikowany', 'Verified', 'Członek', 'Member']"), 'Verified role recovery is missing');
+assert(applicationSource.includes('await member.roles.set([...finalRoleIds]'), 'Support language roles must be updated atomically');
+
 const handled = new Set([...applicationSource.matchAll(/commandName\s*===\s*'([^']+)'/g)].map(match => match[1]));
 for (const match of applicationSource.matchAll(/\[([^\]]+)\]\.includes\(commandName\)/gs)) {
   for (const item of match[1].matchAll(/'([^']+)'/g)) handled.add(item[1]);
