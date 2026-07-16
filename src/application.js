@@ -1,7 +1,5 @@
-// // ╔══════════════════════════════════════════════════════════════════╗
-// ║              FenixExelent Bot — Full Edition v2.1               ║
-// ║  AntiSpam · AntiRaid · ChannelGuard · Verify · Warns · Tickets ║
-// ╚══════════════════════════════════════════════════════════════════╝
+// FenixExelent Security 3.2
+// Bot Discord, ochrona serwera, moderacja oraz panel WWW.
 
 const {
   Client,
@@ -18,7 +16,6 @@ const {
 } = require('discord.js');
 
 require('dotenv').config();
-const express = require('express');
 const axios   = require('axios');
 const { logger } = require('./services/logger');
 
@@ -29,14 +26,13 @@ try {
   logger.warn('⚠️ OCR AntiScam wyłączony: brakuje paczki tesseract.js. Uruchom npm install.');
 }
 
-const session = require('express-session');
 const path    = require('path');
-const fs = require('fs');
-const app = express();
+let dashboardHttpServer = null;
 
 // ─── CONFIG / STORAGE ─────────────────────────────────────────────────────
 const database = require('./services/database');
 const { defaultGuildConfig } = require('./config/defaultGuildConfig');
+const { startDashboardServer } = require('./dashboard/server');
 
 const LEGACY_CONFIG_PATH = path.join(__dirname, '..', 'config.json');
 let config = null;
@@ -197,14 +193,49 @@ function isStaffMember(member, gc) {
   if (member.permissions.has(PermissionFlagsBits.ModerateMembers)) return true;
   if (gc.adminRole && member.roles.cache.has(gc.adminRole)) return true;
   if (gc.modRole && member.roles.cache.has(gc.modRole)) return true;
-  if (gc.tickets?.supportRoleId && member.roles.cache.has(gc.tickets.supportRoleId)) return true;
   return false;
 }
 
-function requireSecurityPermission(interaction, gc) {
-  // Komendy są publiczne na wszystkich serwerach poza oficjalnym supportem.
-  // Ograniczenie supportu jest obsługiwane centralnie w handlerze slash commandów.
-  return null;
+const PUBLIC_COMMANDS = new Set([
+  'help', 'dashboard', 'security', 'status', 'securitystats', 'servercheck',
+  'privacy', 'terms', 'about', 'support', 'reportscam',
+]);
+
+const ADMIN_COMMANDS = new Set([
+  'setup', 'stats', 'modlog', 'antispam', 'antiraid', 'antiscam', 'scamdomains',
+  'ocrscan', 'antialt', 'reactionroles', 'channelguard', 'securityignore', 'verification', 'ticket',
+  'backup', 'emergency', 'refreshbot', 'botserver',
+]);
+
+function isAdminMember(member, gc) {
+  if (!member) return false;
+  if (member.permissions.has(PermissionFlagsBits.Administrator)) return true;
+  if (member.permissions.has(PermissionFlagsBits.ManageGuild)) return true;
+  return !!(gc.adminRole && member.roles.cache.has(gc.adminRole));
+}
+
+function isOwnerOrDeveloper(interaction) {
+  const ownerId = String(process.env.OWNER_ID || '').trim();
+  const developerRoleId = String(process.env.DEVELOPER_ROLE_ID || '').trim();
+  return (ownerId && interaction.user?.id === ownerId) ||
+    (developerRoleId && interaction.member?.roles?.cache?.has(developerRoleId));
+}
+
+function canUseCommand(interaction, gc, commandName) {
+  if (PUBLIC_COMMANDS.has(commandName)) return true;
+  if (isOwnerOrDeveloper(interaction)) return true;
+  if (commandName === 'appeal') {
+    const subcommand = interaction.options.getSubcommand(false);
+    if (subcommand === 'submit') return true;
+    if (subcommand === 'setup') return isAdminMember(interaction.member, gc);
+    return isStaffMember(interaction.member, gc);
+  }
+  if (commandName === 'risk') {
+    const requestedUser = interaction.options.getUser('uzytkownik');
+    return !requestedUser || requestedUser.id === interaction.user.id || isStaffMember(interaction.member, gc);
+  }
+  if (ADMIN_COMMANDS.has(commandName)) return isAdminMember(interaction.member, gc);
+  return isStaffMember(interaction.member, gc);
 }
 
 function getAccountAgeDays(user) {
@@ -498,7 +529,12 @@ async function maybeHandleAntiAlt(member) {
   addRisk(gc, member.id, Number(gc.antialt.riskPoints || 20), `Nowe konto Discord: ${ageDays}/${minDays} dni`, { type: 'antialt' });
   saveConfig();
 
-  if (gc.verification?.unverifiedRoleId) {
+  const action = gc.antialt.action || 'verify';
+  if (action === 'ban' && member.bannable) {
+    await member.ban({ reason: `FenixExelent AntiAlt: konto ma ${ageDays}/${minDays} dni` }).catch(() => {});
+  } else if (action === 'kick' && member.kickable) {
+    await member.kick(`FenixExelent AntiAlt: konto ma ${ageDays}/${minDays} dni`).catch(() => {});
+  } else if (gc.verification?.unverifiedRoleId) {
     await member.roles.add(gc.verification.unverifiedRoleId, 'FenixExelent AntiAlt: nowe konto').catch(() => {});
   }
 
@@ -511,6 +547,7 @@ async function maybeHandleAntiAlt(member) {
       { name: 'Wiek konta', value: `${ageDays} dni`, inline: true },
       { name: 'Minimum', value: `${minDays} dni`, inline: true },
       { name: 'Risk +', value: `${gc.antialt.riskPoints || 20}`, inline: true },
+      { name: 'Akcja', value: action, inline: true },
     ]
   ));
 }
@@ -669,7 +706,14 @@ async function restoreServerBackup(guild, gc, backupId) {
     }).then(() => channelsCreated++).catch(() => failed++);
   }
 
-  return { backup, rolesCreated, channelsCreated, failed };
+  if (backup.config && typeof backup.config === 'object') {
+    for (const [key, value] of Object.entries(backup.config)) {
+      gc[key] = JSON.parse(JSON.stringify(value));
+    }
+    saveConfig();
+  }
+
+  return { backupId: backup.id, rolesCreated, channelsCreated, failed, configRestored: !!backup.config };
 }
 
 function calculateServerSecurityScore(gc) {
@@ -919,6 +963,21 @@ async function createReactionRolesPanel(message) {
   ).catch(() => {});
 }
 
+async function createReactionRolesPanelForChannel(channel) {
+  let responseText = '';
+  await createReactionRolesPanel({
+    guild: channel.guild,
+    channel,
+    reply: async value => {
+      responseText = typeof value === 'string' ? value : String(value?.content || '');
+      return null;
+    },
+  });
+  if (responseText.startsWith('❌')) throw new Error(responseText.replace(/^❌\s*/, ''));
+  const cfg = ensureReactionRolesConfig(getGuildConfig(channel.guild.id));
+  return { enabled: cfg.enabled, channelId: cfg.channelId, messageId: cfg.messageId, response: responseText };
+}
+
 // Komenda tekstowa — bez deploy-commands.js.
 client.on('messageCreate', async (message) => {
   if (!message.guild || message.author.bot) return;
@@ -1030,7 +1089,6 @@ client.once('clientReady', async () => {
     await updateStats(guild).catch(() => {});
   }
 
-  startDashboard();
 });
 
 client.on('guildCreate', async (guild) => {
@@ -1862,31 +1920,18 @@ client.on('interactionCreate', async (interaction) => {
     return interaction.reply({ content: '❌ Tej komendy można używać tylko na serwerze.', flags: MessageFlags.Ephemeral });
   }
 
-  const SUPPORT_GUILD_ID = process.env.SUPPORT_GUILD_ID || '1492793536930910310';
-  const OWNER_ID = process.env.OWNER_ID || '1075478964505677824';
-  const DEVELOPER_ROLE_ID = process.env.DEVELOPER_ROLE_ID || '1514607845872631868';
-
-  // Na oficjalnym serwerze supportowym komendy są tylko dla Ownera,
-  // Administratorów oraz osób z rolą Developer.
-  // Na każdym innym serwerze wszystkie komendy są dostępne dla każdego użytkownika.
-  if (interaction.guild.id === SUPPORT_GUILD_ID) {
-    const isOwner = interaction.user.id === OWNER_ID;
-    const isAdministrator = interaction.member?.permissions?.has(PermissionFlagsBits.Administrator) || false;
-    const isDeveloper = DEVELOPER_ROLE_ID && interaction.member?.roles?.cache?.has(DEVELOPER_ROLE_ID);
-
-    if (!isOwner && !isAdministrator && !isDeveloper) {
-      return interaction.reply({
-        content: '❌ Na oficjalnym serwerze supportowym komend mogą używać tylko Owner, Administrator i Developer.',
-        flags: MessageFlags.Ephemeral,
-      });
-    }
-  }
-
   const gc = getGuildConfig(interaction.guild.id);
   const { commandName } = interaction;
 
+  if (!canUseCommand(interaction, gc, commandName)) {
+    return interaction.reply({ content: '❌ Nie masz uprawnień do użycia tej komendy.', flags: MessageFlags.Ephemeral });
+  }
+
   try {
     await handleCommand(interaction, gc, commandName);
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: '❌ Ta komenda nie ma aktywnej obsługi. Uruchom ponownie wdrażanie komend.', flags: MessageFlags.Ephemeral });
+    }
   } catch (err) {
     logger.commandError(err, interaction, commandName);
     const errMsg = { embeds: [embed('#ff4757', '❌ Błąd', 'Wystąpił nieoczekiwany błąd. Spróbuj ponownie.')], flags: MessageFlags.Ephemeral };
@@ -2092,6 +2137,27 @@ if (commandName === 'help') {
     return interaction.editReply({ embeds: [embed('#2ed573', '✅ Statystyki odświeżone', 'Kanały statystyk zostały zaktualizowane.')] });
   }
 
+  // ── reaction roles ──────────────────────────────────────────────────
+  if (commandName === 'reactionroles') {
+    const sub = interaction.options.getSubcommand();
+    const reactionRoles = ensureReactionRolesConfig(gc);
+    if (sub === 'setup') {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      const channel = interaction.options.getChannel('kanal') || interaction.channel;
+      const result = await createReactionRolesPanelForChannel(channel);
+      return interaction.editReply({ content: `✅ Panel ról został utworzony w <#${result.channelId}>.` });
+    }
+    if (sub === 'status') {
+      const link = reactionRoles.channelId && reactionRoles.messageId
+        ? `https://discord.com/channels/${interaction.guild.id}/${reactionRoles.channelId}/${reactionRoles.messageId}`
+        : 'Brak panelu';
+      return interaction.reply({ content: `Reaction Roles: **${reactionRoles.enabled ? 'włączone' : 'wyłączone'}**\nPanel: ${link}`, flags: MessageFlags.Ephemeral });
+    }
+    reactionRoles.enabled = false;
+    saveConfig();
+    return interaction.reply({ content: '✅ Reaction Roles zostały wyłączone.', flags: MessageFlags.Ephemeral });
+  }
+
   // ── antialt ─────────────────────────────────────────────────────────
   if (commandName === 'antialt') {
     const sub = interaction.options.getSubcommand();
@@ -2180,7 +2246,7 @@ if (commandName === 'help') {
     const logChannelId = getBestLogChannelId(gc);
     const logChannel = logChannelId ? await interaction.guild.channels.fetch(logChannelId).catch(() => null) : interaction.channel;
 
-    scamReports.set(reportId, {
+    const reportData = {
       reportId,
       guildId: interaction.guild.id,
       reporterId: interaction.user.id,
@@ -2190,7 +2256,10 @@ if (commandName === 'help') {
       opis,
       channelId: interaction.channel.id,
       createdAt: Date.now(),
-    });
+    };
+    scamReports.set(reportId, reportData);
+    if (!gc.scamReports) gc.scamReports = {};
+    gc.scamReports[reportId] = reportData;
 
     ensureSecurityStats(gc).reportsCreated++;
     saveConfig();
@@ -2425,7 +2494,7 @@ if (commandName === 'help') {
     let failed = 0;
 
     try {
-      config = loadConfig();
+      await initializeConfig();
       updateBotPresence();
 
       for (const [, guild] of client.guilds.cache) {
@@ -3628,7 +3697,7 @@ async function handleButton(interaction, gc) {
     }
 
     const [, action, reportId] = interaction.customId.split(':');
-    const report = scamReports.get(reportId);
+    const report = scamReports.get(reportId) || gc.scamReports?.[reportId];
     if (!report) {
       return interaction.reply({ content: '❌ To zgłoszenie wygasło po restarcie bota albo nie istnieje.', flags: MessageFlags.Ephemeral });
     }
@@ -3672,6 +3741,8 @@ async function handleButton(interaction, gc) {
     }
 
     scamReports.delete(reportId);
+    if (gc.scamReports) delete gc.scamReports[reportId];
+    saveConfig();
     await interaction.message.edit({ components: buildDisabledScamReportButtons(reportId) }).catch(() => {});
     return interaction.reply({ content: result, flags: MessageFlags.Ephemeral });
   }
@@ -3892,418 +3963,13 @@ async function handleButton(interaction, gc) {
 // ═══════════════════════════════════════════════════════════════════════════
 //  DASHBOARD (Web Panel)
 // ═══════════════════════════════════════════════════════════════════════════
-function startDashboard() {
-  app.set('trust proxy', 1);
-  app.use(express.json());
-  app.use(express.static(path.join(__dirname, '..', 'dashboard', 'public')));
-
-  app.use(session({
-    secret: process.env.SESSION_SECRET || 'fenixexelent_secret_change_me',
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-      sameSite: 'lax',
-      secure: false,
-    },
-  }));
-
-  function requireAuth(req, res, next) {
-    if (!req.session.user) {
-      return res.status(401).json({ error: 'Niezalogowany' });
-    }
-    next();
-  }
-
-  function hasAdminOnGuild(req, guildId) {
-    if (!req.session.guilds) return false;
-
-    const OWNER_ID = process.env.OWNER_ID || '1075478964505677824';
-    if (req.session.user?.id === OWNER_ID) return true;
-
-    const guild = req.session.guilds.find(g => g.id === guildId);
-    if (!guild) return false;
-
-    return (BigInt(guild.permissions) & BigInt(0x8)) === BigInt(0x8);
-  }
-
-  const CLIENT_ID = process.env.CLIENT_ID;
-  const CLIENT_SECRET = process.env.CLIENT_SECRET;
-  const REDIRECT_URI = process.env.REDIRECT_URI || `${config.dashboardUrl}/callback`;
-
-  if (!CLIENT_ID || !CLIENT_SECRET) {
-    logger.warn('⚠️ Brakuje CLIENT_ID albo CLIENT_SECRET w .env — logowanie Discord OAuth2 nie zadziała.');
-  }
-
-  // OAuth2
-  app.get('/invite', (req, res) => {
-    return res.redirect(
-      `https://discord.com/oauth2/authorize?client_id=${CLIENT_ID}&permissions=8&scope=bot%20applications.commands`
-    );
-  });
-
-  app.get('/login', (req, res) => {
-    const url = new URL('https://discord.com/oauth2/authorize');
-    url.searchParams.set('client_id', CLIENT_ID);
-    url.searchParams.set('response_type', 'code');
-    url.searchParams.set('redirect_uri', REDIRECT_URI);
-    url.searchParams.set('scope', 'identify guilds');
-
-    return res.redirect(url.toString());
-  });
-
-  app.get('/logout', (req, res) => {
-    req.session.destroy(() => res.redirect('/dashboard.html'));
-  });
-
-  app.get('/callback', async (req, res) => {
-    const code = req.query.code;
-    if (!code) return res.redirect('/dashboard.html?error=no_code');
-
-    try {
-      const tokenRes = await axios.post(
-        'https://discord.com/api/oauth2/token',
-        new URLSearchParams({
-          client_id: CLIENT_ID,
-          client_secret: CLIENT_SECRET,
-          grant_type: 'authorization_code',
-          code,
-          redirect_uri: REDIRECT_URI,
-        }),
-        { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
-      );
-
-      const accessToken = tokenRes.data.access_token;
-
-      const [userRes, guildsRes] = await Promise.all([
-        axios.get('https://discord.com/api/users/@me', {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        }),
-        axios.get('https://discord.com/api/users/@me/guilds', {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        }),
-      ]);
-
-      req.session.user = userRes.data;
-      req.session.guilds = guildsRes.data;
-      req.session.token = accessToken;
-
-      return res.redirect('/dashboard.html');
-    } catch (err) {
-      logger.error('OAuth2 error:', err.response?.data || err.message);
-      return res.redirect('/dashboard.html?error=auth_failed');
-    }
-  });
-
-  // API endpoints
-  app.get('/api/me', (req, res) => {
-    if (!req.session.user) return res.json({ loggedIn: false });
-
-    const u = req.session.user;
-
-    return res.json({
-      loggedIn: true,
-      user: {
-        id: u.id,
-        username: u.username,
-        avatar: u.avatar
-          ? `https://cdn.discordapp.com/avatars/${u.id}/${u.avatar}.png`
-          : 'https://cdn.discordapp.com/embed/avatars/0.png',
-      },
-    });
-  });
-
-  app.get('/api/guilds', requireAuth, (req, res) => {
-    const OWNER_ID = process.env.OWNER_ID || '1075478964505677824';
-    const botGuildIds = new Set(client.guilds.cache.keys());
-
-    const visibleGuilds = req.session.guilds
-      .filter(g => {
-        const isOwner = req.session.user?.id === OWNER_ID;
-        const isAdmin = (BigInt(g.permissions) & BigInt(0x8)) === BigInt(0x8);
-        return (isOwner || isAdmin) && botGuildIds.has(g.id);
-      })
-      .map(g => ({
-        id: g.id,
-        name: g.name,
-        icon: g.icon ? `https://cdn.discordapp.com/icons/${g.id}/${g.icon}.png` : null,
-        hasBot: botGuildIds.has(g.id),
-        memberCount: client.guilds.cache.get(g.id)?.memberCount || null,
-      }));
-
-    return res.json(visibleGuilds);
-  });
-
-  app.get('/api/guild/:guildId/meta', requireAuth, async (req, res) => {
-    const { guildId } = req.params;
-    if (!hasAdminOnGuild(req, guildId)) {
-      return res.status(403).json({ error: 'Brak uprawnień' });
-    }
-
-    const guild = client.guilds.cache.get(guildId);
-    if (!guild) {
-      return res.status(404).json({ error: 'Bot nie jest na tym serwerze' });
-    }
-
-    await guild.channels.fetch().catch(() => {});
-    await guild.roles.fetch().catch(() => {});
-
-    const channels = guild.channels.cache
-      .filter(ch => ch.type === ChannelType.GuildText)
-      .map(ch => ({ id: ch.id, name: ch.name }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-
-    const roles = guild.roles.cache
-      .filter(r => !r.managed && r.id !== guild.roles.everyone.id)
-      .map(r => ({ id: r.id, name: r.name }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-
-    return res.json({ channels, roles });
-  });
-
-  app.get('/api/config/:guildId', requireAuth, (req, res) => {
-    const { guildId } = req.params;
-
-    if (!hasAdminOnGuild(req, guildId)) {
-      return res.status(403).json({ error: 'Brak uprawnień' });
-    }
-
-    return res.json(getGuildConfig(guildId));
-  });
-
-  app.post('/api/config/:guildId', requireAuth, async (req, res) => {
-    const { guildId } = req.params;
-
-    try {
-      if (!hasAdminOnGuild(req, guildId)) {
-        return res.status(403).json({ error: 'Brak uprawnień' });
-      }
-
-      const guild = client.guilds.cache.get(guildId);
-      if (!guild) {
-        return res.status(404).json({ error: 'Bot nie jest na tym serwerze' });
-      }
-
-      if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
-        return res.status(400).json({ error: 'Nieprawidłowe dane JSON' });
-      }
-
-      await guild.channels.fetch().catch(() => {});
-      await guild.roles.fetch().catch(() => {});
-
-      const gc = getGuildConfig(guildId);
-      const allowed = [
-        'antispam', 'antiraid', 'antiscam', 'channelGuard',
-        'verification', 'tickets', 'modLog', 'antialt',
-        'emergency', 'securityIgnore', 'appeals',
-      ];
-
-      for (const key of allowed) {
-        const incoming = req.body[key];
-        if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) continue;
-        if (!gc[key] || typeof gc[key] !== 'object' || Array.isArray(gc[key])) gc[key] = {};
-        Object.assign(gc[key], incoming);
-      }
-
-      const actions = req.body.actions && typeof req.body.actions === 'object'
-        ? req.body.actions
-        : {};
-
-      if (req.body.antiraid?.lockdownActive !== undefined) {
-        const lockdownActive = Boolean(req.body.antiraid.lockdownActive);
-        let failed = 0;
-        for (const [, ch] of guild.channels.cache) {
-          if (ch.type !== ChannelType.GuildText) continue;
-          await ch.permissionOverwrites.edit(guild.roles.everyone, {
-            SendMessages: lockdownActive ? false : null,
-          }).catch(err => {
-            failed++;
-            logger.error(`Dashboard lockdown: nie udało się zmienić #${ch.name}:`, err.message);
-          });
-        }
-        if (failed) logger.warn(`Dashboard lockdown: ${failed} kanałów nie zostało zaktualizowanych.`);
-      }
-
-      if (actions.sendVerificationPanel) {
-        const channelId = gc.verification?.channelId;
-        const ch = channelId ? await guild.channels.fetch(channelId).catch(() => null) : null;
-        if (!ch || !ch.isTextBased?.()) {
-          return res.status(400).json({ error: 'Wybierz prawidłowy kanał panelu weryfikacji' });
-        }
-        await sendVerifyPanel(ch);
-      }
-
-      if (actions.sendTicketPanel) {
-        const channelId = gc.tickets?.panelChannelId || gc.tickets?.logChannelId;
-        const ch = channelId ? await guild.channels.fetch(channelId).catch(() => null) : null;
-        if (!ch || !ch.isTextBased?.()) {
-          return res.status(400).json({ error: 'Wybierz prawidłowy kanał panelu ticketów' });
-        }
-        await sendTicketPanel(ch);
-      }
-
-      saveConfig();
-
-      const logChannelId =
-        gc.modLog?.channelId || gc.antiraid?.logChannel || gc.antispam?.logChannel ||
-        gc.antiscam?.logChannel || gc.channelGuard?.logChannel;
-
-      if (logChannelId) {
-        const logCh = await guild.channels.fetch(logChannelId).catch(() => null);
-        if (logCh?.isTextBased?.()) {
-          await logCh.send({
-            embeds: [embed(
-              '#2ed573',
-              '⚙️ Dashboard zaktualizowany',
-              'Ustawienia serwera zostały zmienione przez panel WWW.',
-              [
-                { name: 'AntiSpam', value: gc.antispam?.enabled ? '✅ Włączony' : '❌ Wyłączony', inline: true },
-                { name: 'AntiRaid', value: gc.antiraid?.enabled ? '✅ Włączony' : '❌ Wyłączony', inline: true },
-                { name: 'Channel Guard', value: gc.channelGuard?.blockNewChannels ? '✅ Aktywny' : '❌ Wyłączony', inline: true },
-              ]
-            )],
-          }).catch(() => {});
-        }
-      }
-
-      database.writeAudit({ guildId, userId: req.user?.id || req.session?.user?.id || null, eventType: 'dashboard_config_updated', payload: { actions: Object.keys(actions) } });
-      return res.json({ success: true, config: gc });
-    } catch (err) {
-      logger.error(`Dashboard config save error (${guildId}):`, err);
-      return res.status(500).json({
-        error: 'Nie udało się zapisać ustawień',
-        details: process.env.NODE_ENV === 'production' ? undefined : err.message,
-      });
-    }
-  });
-
-  app.post('/api/mod/:guildId/warn', requireAuth, async (req, res) => {
-    const { guildId } = req.params;
-    if (!hasAdminOnGuild(req, guildId)) {
-      return res.status(403).json({ error: 'Brak uprawnień' });
-    }
-
-    const { userId, reason } = req.body;
-    if (!userId || !reason) {
-      return res.status(400).json({ error: 'Brak danych' });
-    }
-
-    const gc = getGuildConfig(guildId);
-    if (!gc.warns[userId]) gc.warns[userId] = [];
-    gc.warns[userId].push({
-      reason,
-      mod: req.session.user.username,
-      date: new Date().toISOString(),
-    });
-
-    saveConfig();
-    return res.json({ success: true, count: gc.warns[userId].length });
-  });
-
-  app.get('/api/mod/:guildId/warns/:userId', requireAuth, (req, res) => {
-    const { guildId, userId } = req.params;
-
-    if (!hasAdminOnGuild(req, guildId)) {
-      return res.status(403).json({ error: 'Brak uprawnień' });
-    }
-
-    const gc = getGuildConfig(guildId);
-    return res.json(gc.warns[userId] || []);
-  });
-
-
-  app.get('/privacy', (req, res) => res.type('html').send(policyHtml('privacy')));
-  app.get('/terms', (req, res) => res.type('html').send(policyHtml('terms')));
-  app.get('/about', (req, res) => res.type('html').send(policyHtml('about')));
-  app.get('/support', (req, res) => res.type('html').send(policyHtml('support')));
-
-  app.get('/api/public-status', async (req, res) => {
-    let users = 0;
-    let bots = 0;
-
-    for (const [, guild] of client.guilds.cache) {
-      await guild.members.fetch().catch(() => {});
-      users += guild.members.cache.filter(member => !member.user.bot).size;
-      bots += guild.members.cache.filter(member => member.user.bot).size;
-    }
-
-    return res.json({
-      name: client.user?.username || 'FenixExelentSecurity',
-      guilds: client.guilds.cache.size,
-      users,
-      bots,
-      total: users + bots,
-      uptime: Math.floor(process.uptime()),
-      uptimeText: formatUptime(process.uptime()),
-      ping: client.ws.ping,
-      security: aggregateSecurityStats(),
-    });
-  });
-
-  app.get('/public-status', async (req, res) => {
-    const stats = aggregateSecurityStats();
-    return res.type('html').send(`<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>FenixExelentSecurity Public Status</title>
-<style>
-body{margin:0;font-family:Arial,sans-serif;background:#050712;color:#f8fbff}main{max-width:1000px;margin:0 auto;padding:36px}.hero{border:1px solid rgba(96,165,250,.25);border-radius:24px;padding:28px;background:linear-gradient(135deg,rgba(37,99,235,.18),rgba(245,158,11,.12))}h1{margin:0 0 8px;font-size:36px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-top:22px}.card{border:1px solid rgba(96,165,250,.22);border-radius:18px;padding:20px;background:#0d1428}.card b{font-size:30px;color:#f59e0b}.muted{color:#9fb0d0}.ok{color:#22c55e;font-weight:900}</style>
-</head>
-<body><main>
-<div class="hero"><h1>🔥 FenixExelentSecurity</h1><p class="muted">Public bot status and security impact.</p><p class="ok">● Online</p></div>
-<div class="grid">
-<div class="card"><b>${client.guilds.cache.size}</b><p>Servers</p></div>
-<div class="card"><b>${client.ws.ping}ms</b><p>Ping</p></div>
-<div class="card"><b>${formatUptime(process.uptime())}</b><p>Uptime</p></div>
-<div class="card"><b>${stats.scamsBlocked}</b><p>Scams blocked</p></div>
-<div class="card"><b>${stats.spamMuted}</b><p>Spam mutes</p></div>
-<div class="card"><b>${stats.raidsDetected}</b><p>Raids detected</p></div>
-<div class="card"><b>${stats.altDetections}</b><p>New account alerts</p></div>
-<div class="card"><b>${stats.reportsCreated}</b><p>Scam reports</p></div>
-</div>
-<p class="muted">Invite: <a style="color:#60a5fa" href="/invite">Add FenixExelentSecurity</a></p>
-</main></body></html>`);
-  });
-
-  app.get('/api/stats', async (req, res) => {
-  let users = 0;
-  let bots = 0;
-
-  for (const [, guild] of client.guilds.cache) {
-    await guild.members.fetch().catch(() => {});
-
-    users += guild.members.cache.filter(member => !member.user.bot).size;
-    bots += guild.members.cache.filter(member => member.user.bot).size;
-  }
-
-  return res.json({
-    guilds: client.guilds.cache.size,
-    users,
-    bots,
-    total: users + bots,
-    uptime: Math.floor(process.uptime()),
-    ping: client.ws.ping,
-    security: aggregateSecurityStats(),
-  });
-});
-
-  app.get('/ping', (req, res) => res.json({ ok: true, uptime: Math.floor(process.uptime()) }));
-
-  app.listen(config.dashboardPort, () => {
-    logger.info(`\n+------------------------------------------------------+`);
-    logger.info(`  Dashboard: ${config.dashboardUrl}`);
-    logger.info(`  Login:     ${config.dashboardUrl + '/login'}`);
-    logger.info(`  Invite:    ${config.dashboardUrl + '/invite'}`);
-    logger.info(`+------------------------------------------------------+\n`);
-  });
-}
-
-
+// Dashboard HTTP is implemented in src/dashboard/server.js.
 async function gracefulShutdown(signal) {
   logger.info(`Received ${signal}, shutting down...`);
   try { client.destroy(); } catch {}
+  if (dashboardHttpServer) {
+    await new Promise(resolve => dashboardHttpServer.close(() => resolve())).catch(() => {});
+  }
   try { await database.closeDatabase(); } catch (error) { logger.error('Database close failed:', error); }
   process.exit(0);
 }
@@ -4312,18 +3978,32 @@ process.once('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
 // ─── START ─────────────────────────────────────────────────────────────────
 async function bootstrap() {
-  const BOT_TOKEN = process.env.BOT_TOKEN;
-  if (!BOT_TOKEN) {
-    logger.error('Brak BOT_TOKEN w pliku .env!');
-    process.exit(1);
-  }
-
   try {
     await initializeConfig();
     logger.info({ database: database.databaseType }, 'Configuration loaded');
   } catch (error) {
-    logger.fatal('Nie udało się uruchomić PostgreSQL:', error);
-    process.exit(1);
+    throw new Error(`Nie udało się uruchomić magazynu danych: ${error.message}`, { cause: error });
+  }
+
+  const sessionSecret = String(process.env.SESSION_SECRET || '');
+  if (process.env.NODE_ENV === 'production' && sessionSecret.length < 32) {
+    throw new Error('W produkcji SESSION_SECRET musi mieć co najmniej 32 znaki.');
+  }
+
+  const dashboardOnly = String(process.env.DASHBOARD_ONLY || '').toLowerCase() === 'true';
+  const BOT_TOKEN = String(process.env.BOT_TOKEN || '').trim();
+  if (!dashboardOnly && !BOT_TOKEN) throw new Error('Brak BOT_TOKEN w pliku .env!');
+
+  dashboardHttpServer = await startDashboardServer({
+    client, config, database, logger, getGuildConfig, saveConfig,
+    sendVerifyPanel, sendTicketPanel, enableEmergencyMode, disableEmergencyMode,
+    createServerBackup, restoreServerBackup, updateStats, calculateServerSecurityScore,
+    aggregateSecurityStats, formatUptime, sendModLog, policyHtml, createReactionRolesPanelForChannel,
+  });
+
+  if (dashboardOnly) {
+    logger.warn('DASHBOARD_ONLY is enabled; Discord client login was skipped.');
+    return { client, dashboardHttpServer };
   }
 
   // Self-ping utrzymuje endpoint HTTP aktywny; nie zastępuje trwałej bazy danych.
@@ -4339,9 +4019,7 @@ async function bootstrap() {
   }
 
   await client.login(BOT_TOKEN);
+  return { client, dashboardHttpServer };
 }
 
-bootstrap().catch(error => {
-  logger.fatal('Application bootstrap failed:', error);
-  process.exit(1);
-});
+module.exports = { bootstrap, client };

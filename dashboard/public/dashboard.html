@@ -1,260 +1,196 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="pl">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>FenixExelent Dashboard</title>
-<style>
-:root{
-  --bg:#050712;--bg2:#070b18;--side:#090f20;--card:#0d1428;--card2:#111b35;
-  --line:rgba(96,165,250,.22);--line2:rgba(245,158,11,.28);
-  --blue:#2563eb;--blue2:#60a5fa;--gold:#f59e0b;--green:#22c55e;--red:#ef4444;
-  --txt:#f8fbff;--muted:#9fb0d0;--muted2:#64748b;
-}
-*{box-sizing:border-box} body{margin:0;background:radial-gradient(circle at top,#111a36 0,#050712 45%);color:var(--txt);font-family:Inter,Arial,sans-serif}
-a{text-decoration:none;color:inherit}.app{display:grid;grid-template-columns:280px 1fr;min-height:100vh}
-.sidebar{background:rgba(9,15,32,.94);border-right:1px solid var(--line);padding:20px;position:sticky;top:0;height:100vh;overflow:auto}
-.brand{display:flex;align-items:center;gap:10px;font-weight:900;font-size:22px;margin-bottom:22px}.brand span{color:var(--gold)}
-.login{display:block;text-align:center;background:linear-gradient(135deg,var(--blue),#1d4ed8);padding:13px;border-radius:12px;font-weight:900;margin-bottom:16px}
-.user{display:none;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:18px}.user img{width:44px;height:44px;border-radius:50%;vertical-align:middle;margin-right:10px}
-.guildSelect{width:100%;background:#050814;color:#fff;border:1px solid var(--line);border-radius:12px;padding:12px;margin:10px 0 18px}
-.navTitle{font-size:11px;color:var(--muted2);text-transform:uppercase;letter-spacing:.16em;margin:18px 0 8px}
-.nav button{width:100%;background:transparent;color:#c9d7f4;border:0;text-align:left;padding:13px;border-radius:12px;font-weight:800;cursor:pointer;margin:3px 0}
-.nav button:hover,.nav button.active{background:rgba(37,99,235,.18);color:#fff}
-.main{padding:26px 30px}.top{display:flex;justify-content:space-between;align-items:center;gap:18px;margin-bottom:20px}.top h1{font-size:34px;margin:0}.top p{color:var(--muted);margin:6px 0 0}
-.btn{background:linear-gradient(135deg,var(--blue),#1d4ed8);color:#fff;border:0;border-radius:12px;padding:12px 16px;font-weight:900;cursor:pointer}.btn.secondary{background:#111936;border:1px solid var(--line);color:#dbeafe}.btn.danger{background:#7f1d1d}
-.banner{background:linear-gradient(135deg,rgba(245,158,11,.08),rgba(37,99,235,.08));border:1px solid var(--line2);border-radius:20px;overflow:hidden;margin-bottom:22px;min-height:120px;display:flex;align-items:center;justify-content:center}
-.banner img{width:100%;display:block}.bannerFallback{padding:28px;text-align:center;font-weight:900;font-size:28px}.bannerFallback span{color:var(--gold)}
-.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}.stat{background:linear-gradient(180deg,var(--card),#080d1d);border:1px solid var(--line);border-radius:18px;padding:18px}.stat b{font-size:26px}.stat p{color:var(--muted);margin:6px 0 0}
-.panel{display:none}.panel.active{display:block}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.card{background:linear-gradient(180deg,var(--card),#080d1d);border:1px solid var(--line);border-radius:18px;padding:20px}.card h3{margin:0 0 10px}.card p{color:var(--muted)}
-.badge{display:inline-block;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:900}.on{background:rgba(34,197,94,.16);color:#86efac}.off{background:rgba(239,68,68,.16);color:#fca5a5}
-.form{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}.field{background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:16px;padding:16px}.field label{display:block;font-weight:900;margin-bottom:8px;color:#dbeafe}.field input,.field select{width:100%;background:#050814;color:white;border:1px solid var(--line);border-radius:10px;padding:12px}
-.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}.toast{position:fixed;right:22px;bottom:22px;background:#052e16;border:1px solid #22c55e;color:#bbf7d0;padding:14px 18px;border-radius:14px;display:none;font-weight:900;z-index:99}
-.notice{background:rgba(245,158,11,.08);border:1px solid var(--line2);border-radius:16px;padding:14px;margin-bottom:16px;color:#fde68a}
-@media(max-width:1050px){.app{grid-template-columns:1fr}.sidebar{height:auto;position:relative}.stats,.grid,.form{grid-template-columns:1fr}.top{flex-direction:column;align-items:flex-start}}
-
-/* Verification panel — Member + Niezweryfikowany + języki */
-.verify-layout{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(320px,.9fr);gap:18px;align-items:start}
-.verify-preview{background:linear-gradient(180deg,#0b1226,#070b18);border:1px solid rgba(96,165,250,.25);border-radius:18px;padding:18px}
-.verify-discord{background:#2b2d31;border-radius:14px;padding:16px;color:#dbdee1;font-family:Arial,sans-serif}
-.verify-embed{border-left:4px solid #ff6b00;background:#1e1f22;border-radius:4px;padding:14px}
-.verify-embed-title{font-weight:800;color:#fff;font-size:17px;margin-bottom:10px}
-.verify-embed-text{font-size:14px;line-height:1.55;color:#dbdee1;white-space:pre-line}
-.verify-footer{font-size:12px;color:#949ba4;margin-top:12px}
-.verify-buttons{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
-.verify-buttons button{border:0;border-radius:7px;padding:10px 12px;font-weight:800;background:#5865f2;color:#fff}
-.verify-buttons .primary{background:#248046;width:100%}
-.field small{display:block;color:var(--muted);margin-top:7px;line-height:1.4}
-@media(max-width:1050px){.verify-layout{grid-template-columns:1fr}}
-
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>FenixExelent — Dashboard</title>
+  <style>
+    :root{--bg:#050712;--side:#090f20;--card:#0d1428;--card2:#111b35;--line:rgba(96,165,250,.22);--blue:#2563eb;--gold:#f59e0b;--green:#22c55e;--red:#ef4444;--txt:#f8fbff;--muted:#9fb0d0}
+    *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#111a36 0,#050712 45%);color:var(--txt);font-family:Inter,Segoe UI,Arial,sans-serif}button,input,select,textarea{font:inherit}a{color:inherit;text-decoration:none}
+    .app{display:grid;grid-template-columns:285px 1fr;min-height:100vh}.sidebar{background:rgba(9,15,32,.96);border-right:1px solid var(--line);padding:20px;position:sticky;top:0;height:100vh;overflow:auto}.main{padding:28px;min-width:0}
+    .brand{font-size:23px;font-weight:900;margin-bottom:18px}.brand span{color:var(--gold)}.login,.btn{border:0;border-radius:11px;padding:11px 15px;font-weight:800;cursor:pointer;background:linear-gradient(135deg,var(--blue),#1d4ed8);color:#fff}.login{display:block;text-align:center;margin-bottom:14px}.btn.secondary{background:#111936;border:1px solid var(--line)}.btn.warn{background:#92400e}.btn.danger{background:#991b1b}.btn.good{background:#166534}.btn:disabled{opacity:.5;cursor:not-allowed}
+    .user{display:none;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:14px;align-items:center;gap:10px}.user img{width:38px;height:38px;border-radius:50%}.guild-select{width:100%;margin:8px 0 18px;background:#050814;color:#fff;border:1px solid var(--line);border-radius:10px;padding:11px}.nav-title{font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.14em;margin:16px 0 7px}.nav button{width:100%;background:transparent;color:#c9d7f4;border:0;text-align:left;padding:11px;border-radius:10px;font-weight:700;cursor:pointer}.nav button:hover,.nav button.active{background:rgba(37,99,235,.18);color:#fff}
+    .hero{background:linear-gradient(135deg,rgba(245,158,11,.14),rgba(37,99,235,.15));border:1px solid var(--line);border-radius:20px;padding:22px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;gap:16px}.hero h1{margin:0;font-size:30px}.hero p{margin:6px 0 0;color:var(--muted)}
+    .panel{display:none}.panel.active{display:block}.top{display:flex;justify-content:space-between;align-items:center;gap:16px;margin:0 0 18px}.top h2{font-size:28px;margin:0}.top p{color:var(--muted);margin:5px 0 0}.stats,.cards,.form{display:grid;gap:14px}.stats{grid-template-columns:repeat(4,1fr);margin-bottom:16px}.cards{grid-template-columns:repeat(4,1fr)}.form{grid-template-columns:repeat(2,minmax(0,1fr))}.stat,.card,.field,.tool{background:linear-gradient(180deg,var(--card),#080d1d);border:1px solid var(--line);border-radius:15px;padding:16px}.stat b{font-size:25px}.stat p,.card p,.muted{color:var(--muted)}.card h3{margin:0 0 9px}.field label{display:block;font-weight:800;margin-bottom:7px}.field small{display:block;color:var(--muted);margin-top:6px}.field input,.field select,.field textarea{width:100%;background:#050814;color:#fff;border:1px solid var(--line);border-radius:9px;padding:11px}.field textarea{min-height:110px;resize:vertical}.field select[multiple]{min-height:135px}.wide{grid-column:1/-1}.actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:16px}.badge{display:inline-block;border-radius:999px;padding:5px 9px;font-size:12px;font-weight:900}.on{background:rgba(34,197,94,.16);color:#86efac}.off{background:rgba(239,68,68,.16);color:#fca5a5}.notice{background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.28);border-radius:13px;padding:12px;margin-bottom:15px;color:#fde68a}.toast{position:fixed;right:20px;bottom:20px;max-width:420px;padding:13px 17px;border-radius:12px;display:none;font-weight:800;z-index:30}.list{display:grid;gap:8px}.list-item{background:#080d1d;border:1px solid var(--line);border-radius:10px;padding:11px}.output{white-space:pre-wrap;background:#050814;border:1px solid var(--line);border-radius:10px;padding:13px;min-height:80px;color:#dbeafe}.danger-zone{border-color:rgba(239,68,68,.4)}
+    @media(max-width:1150px){.cards{grid-template-columns:repeat(2,1fr)}.stats{grid-template-columns:repeat(2,1fr)}}@media(max-width:820px){.app{grid-template-columns:1fr}.sidebar{position:relative;height:auto}.main{padding:18px}.form,.cards,.stats{grid-template-columns:1fr}.hero,.top{align-items:flex-start;flex-direction:column}}
+  </style>
 </head>
 <body>
 <div class="app">
-<aside class="sidebar">
-  <div class="brand">🔥 Fenix<span>Exelent</span></div>
-  <a id="loginBtn" href="/login" class="login">Login przez Discord</a>
-  <div id="userBox" class="user"></div>
-  <div class="navTitle">Serwer</div>
-  <select id="guildSelect" class="guildSelect"><option>Najpierw się zaloguj</option></select>
-  <div class="navTitle">Panel</div>
-  <div class="nav">
-    <button class="active" onclick="tab('overview',this)">📊 Overview</button>
-    <button onclick="tab('antispam',this)">🛡️ AntiSpam</button>
-    <button onclick="tab('antiraid',this)">🚨 AntiRaid</button>
-    <button onclick="tab('guard',this)">🔒 Channel Guard</button>
-    <button onclick="tab('verify',this)">✅ Weryfikacja</button>
-    <button onclick="tab('tickets',this)">🎫 Tickety</button>
-    <button onclick="tab('logs',this)">📋 Logi</button>
-  </div>
-  <div class="navTitle">Linki</div>
-  <div class="nav">
-    <button onclick="location.href='/'">🏠 Strona główna</button>
-    <button onclick="location.href='/invite'">➕ Dodaj bota</button>
-    <button onclick="location.href='/logout'">🚪 Wyloguj</button>
-  </div>
-</aside>
-
-<main class="main">
-  <div class="banner">
-    <img src="/banner.png" alt="FenixExelent banner" onerror="this.style.display='none';document.getElementById('bannerFallback').style.display='block'">
-    <div id="bannerFallback" class="bannerFallback" style="display:none">Fenix<span>Exelent</span> Dashboard</div>
-  </div>
-
-  <section id="overview" class="panel active">
-    <div class="top"><div><h1>Przegląd serwera</h1><p>Status modułów i szybkie statystyki bota.</p></div><button class="btn" onclick="refresh()">🔄 Odśwież</button></div>
-    <div class="stats">
-      <div class="stat"><b id="sGuilds">-</b><p>Serwery</p></div><div class="stat"><b id="sUsers">-</b><p>Użytkownicy</p></div><div class="stat"><b id="sPing">-</b><p>Ping</p></div><div class="stat"><b id="sUp">-</b><p>Uptime</p></div>
+  <aside class="sidebar">
+    <div class="brand">🔥 Fenix<span>Exelent</span></div>
+    <a id="loginBtn" class="login" href="/login">Zaloguj przez Discord</a>
+    <div id="userBox" class="user"></div>
+    <div class="nav-title">Serwer</div>
+    <select id="guildSelect" class="guild-select"><option value="">Najpierw się zaloguj</option></select>
+    <div class="nav-title">Moduły</div>
+    <div class="nav" id="nav">
+      <button class="active" data-tab="overview">📊 Przegląd</button>
+      <button data-tab="antispam">🛡️ AntiSpam</button>
+      <button data-tab="antiraid">🚨 AntiRaid</button>
+      <button data-tab="antiscam">🔎 AntiScam i OCR</button>
+      <button data-tab="antialt">🆕 AntiAlt</button>
+      <button data-tab="reactionroles">🎮 Reaction Roles</button>
+      <button data-tab="guard">🔒 Channel Guard</button>
+      <button data-tab="verify">✅ Weryfikacja</button>
+      <button data-tab="tickets">🎫 Tickety</button>
+      <button data-tab="staff">👮 Staff i logi</button>
+      <button data-tab="security">🚨 Centrum bezpieczeństwa</button>
+      <button data-tab="moderation">🔨 Moderacja</button>
     </div>
-    <div class="grid">
-      <div class="card"><h3>🛡️ AntiSpam</h3><span id="bAS" class="badge off">-</span><p>Spam, flood, timeout i logi.</p></div>
-      <div class="card"><h3>🚨 AntiRaid</h3><span id="bAR" class="badge off">-</span><p>Masowe wejścia, kick/ban/mute i lockdown.</p></div>
-      <div class="card"><h3>🔒 Channel Guard</h3><span id="bCG" class="badge off">-</span><p>Blokada nieautoryzowanych kanałów.</p></div>
-      <div class="card"><h3>✅ Weryfikacja</h3><span id="bVF" class="badge off">-</span><p>Rola po kliknięciu przycisku.</p></div>
-      <div class="card"><h3>🎫 Tickety</h3><span id="bTK" class="badge off">-</span><p>Pomoc i prywatne kanały supportu.</p></div>
-      <div class="card"><h3>📋 Logi</h3><span class="badge on">Gotowe</span><p>Logi akcji dashboardu i moderacji.</p></div>
-    </div>
-  </section>
+    <div class="nav-title">Linki</div>
+    <div class="nav"><button data-link="/">🏠 Strona główna</button><button data-link="/invite">➕ Dodaj bota</button><button data-link="/logout">🚪 Wyloguj</button></div>
+  </aside>
 
-  <section id="antispam" class="panel"><div class="top"><div><h1>🛡️ AntiSpam</h1><p>Zmiany zapisują się do configu i działają od razu na Discordzie.</p></div></div>
-    <div class="form">
+  <main class="main">
+    <div class="hero"><div><h1>FenixExelent Security</h1><p>Pełna konfiguracja bota, bezpieczeństwo i moderacja w jednym miejscu.</p></div><button class="btn secondary" id="refreshBtn">Odśwież dane</button></div>
+    <div id="pageNotice" class="notice" hidden></div>
+
+    <section id="overview" class="panel active">
+      <div class="top"><div><h2>Przegląd serwera</h2><p>Status bota i wszystkich głównych modułów.</p></div></div>
+      <div class="stats"><div class="stat"><b id="sGuilds">–</b><p>Serwery</p></div><div class="stat"><b id="sUsers">–</b><p>Użytkownicy</p></div><div class="stat"><b id="sPing">–</b><p>Ping</p></div><div class="stat"><b id="sUp">–</b><p>Uptime</p></div></div>
+      <div class="cards">
+        <div class="card"><h3>AntiSpam</h3><span id="bAS" class="badge off">–</span><p>Flood, timeout i logi.</p></div>
+        <div class="card"><h3>AntiRaid</h3><span id="bAR" class="badge off">–</span><p>Masowe wejścia i lockdown.</p></div>
+        <div class="card"><h3>AntiScam/OCR</h3><span id="bSC" class="badge off">–</span><p>Linki, domeny i obrazy.</p></div>
+        <div class="card"><h3>AntiAlt</h3><span id="bAA" class="badge off">–</span><p>Świeże i ryzykowne konta.</p></div>
+        <div class="card"><h3>Reaction Roles</h3><span id="bRR" class="badge off">–</span><p>Role gier i platform.</p></div>
+        <div class="card"><h3>Channel Guard</h3><span id="bCG" class="badge off">–</span><p>Ochrona nowych kanałów.</p></div>
+        <div class="card"><h3>Weryfikacja</h3><span id="bVF" class="badge off">–</span><p>Role i panel Verify.</p></div>
+        <div class="card"><h3>Tickety</h3><span id="bTK" class="badge off">–</span><p>Prywatne kanały pomocy.</p></div>
+        <div class="card"><h3>Emergency</h3><span id="bEM" class="badge off">–</span><p>Awaryjne zabezpieczenie.</p></div>
+      </div>
+    </section>
+
+    <section id="antispam" class="panel"><div class="top"><div><h2>AntiSpam</h2><p>Limity wiadomości, wyciszenia i logi.</p></div></div><div class="form">
       <div class="field"><label>Status</label><select id="asEnabled"><option value="true">Włączony</option><option value="false">Wyłączony</option></select></div>
-      <div class="field"><label>Max wiadomości</label><input id="asMax" type="number" min="2" max="20"></div>
-      <div class="field"><label>Czas / sekundy</label><input id="asTime" type="number" min="1" max="60"></div>
-      <div class="field"><label>Mute / minuty</label><input id="asMute" type="number" min="1"></div>
+      <div class="field"><label>Maks. wiadomości</label><input id="asMax" type="number" min="2" max="20"></div>
+      <div class="field"><label>Okno czasowe (sekundy)</label><input id="asTime" type="number" min="1" max="60"></div>
+      <div class="field"><label>Wyciszenie (minuty)</label><input id="asMute" type="number" min="1" max="1440"></div>
       <div class="field"><label>Kanał logów</label><select id="asLog"></select></div>
-    </div><div class="actions"><button class="btn" onclick="save()">💾 Zapisz</button><button class="btn secondary" onclick="loadConfig()">↩ Reset</button></div>
-  </section>
+    </div><div class="actions"><button class="btn saveBtn">Zapisz</button></div></section>
 
-  <section id="antiraid" class="panel"><div class="top"><div><h1>🚨 AntiRaid</h1><p>Lockdown zmienia uprawnienia kanałów tekstowych na serwerze.</p></div></div>
-    <div class="form">
+    <section id="antiraid" class="panel"><div class="top"><div><h2>AntiRaid</h2><p>Próg dołączeń, akcja i globalny lockdown.</p></div></div><div class="form">
       <div class="field"><label>Status</label><select id="arEnabled"><option value="true">Włączony</option><option value="false">Wyłączony</option></select></div>
-      <div class="field"><label>Max dołączeń</label><input id="arJoins" type="number"></div>
-      <div class="field"><label>Czas / sekundy</label><input id="arTime" type="number"></div>
+      <div class="field"><label>Maks. dołączeń</label><input id="arJoins" type="number" min="2" max="50"></div>
+      <div class="field"><label>Okno czasowe (sekundy)</label><input id="arTime" type="number" min="1" max="60"></div>
       <div class="field"><label>Akcja</label><select id="arAction"><option value="kick">Kick</option><option value="ban">Ban</option><option value="mute">Mute</option></select></div>
       <div class="field"><label>Lockdown</label><select id="arLock"><option value="false">Wyłączony</option><option value="true">Włączony</option></select></div>
       <div class="field"><label>Kanał logów</label><select id="arLog"></select></div>
-    </div><div class="actions"><button class="btn" onclick="save()">💾 Zapisz</button></div>
-  </section>
+    </div><div class="actions"><button class="btn saveBtn">Zapisz</button></div></section>
 
-  <section id="guard" class="panel"><div class="top"><div><h1>🔒 Channel Guard</h1><p>Ochrona przed tworzeniem kanałów przez nieuprawnione osoby.</p></div></div>
-    <div class="form">
+    <section id="antiscam" class="panel"><div class="top"><div><h2>AntiScam i OCR</h2><p>Domeny, linki phishingowe i skanowanie tekstu z obrazów.</p></div></div><div class="form">
+      <div class="field"><label>Status AntiScam</label><select id="scEnabled"><option value="true">Włączony</option><option value="false">Wyłączony</option></select></div>
+      <div class="field"><label>Usuwaj wiadomości</label><select id="scDelete"><option value="true">Tak</option><option value="false">Nie</option></select></div>
+      <div class="field"><label>Wyciszenie (minuty)</label><input id="scMute" type="number" min="1" max="1440"></div>
+      <div class="field"><label>Kanał logów</label><select id="scLog"></select></div>
+      <div class="field"><label>Blokuj obrazy scam</label><select id="scBlockImages"><option value="true">Tak</option><option value="false">Nie</option></select></div>
+      <div class="field"><label>OCR obrazów</label><select id="scOcr"><option value="true">Włączony</option><option value="false">Wyłączony</option></select></div>
+      <div class="field"><label>Tryb ostry obrazów</label><select id="scStrict"><option value="false">Wyłączony</option><option value="true">Włączony</option></select></div>
+      <div class="field"><label>Minimalny wynik OCR</label><input id="scOcrScore" type="number" min="1" max="10"></div>
+      <div class="field"><label>Biała lista domen</label><textarea id="scWhitelist" placeholder="discord.com&#10;youtube.com"></textarea><small>Jedna domena w wierszu.</small></div>
+      <div class="field"><label>Czarna lista domen</label><textarea id="scBlocked" placeholder="fake-nitro.example"></textarea><small>Jedna domena w wierszu.</small></div>
+    </div><div class="actions"><button class="btn saveBtn">Zapisz</button></div></section>
+
+    <section id="antialt" class="panel"><div class="top"><div><h2>AntiAlt</h2><p>Ochrona przed świeżymi kontami i automatyczna weryfikacja.</p></div></div><div class="form">
+      <div class="field"><label>Status</label><select id="aaEnabled"><option value="true">Włączony</option><option value="false">Wyłączony</option></select></div>
+      <div class="field"><label>Minimalny wiek konta (dni)</label><input id="aaDays" type="number" min="1" max="365"></div>
+      <div class="field"><label>Akcja</label><select id="aaAction"><option value="verify">Dodatkowa weryfikacja</option><option value="kick">Kick</option><option value="ban">Ban</option></select></div>
+      <div class="field"><label>Punkty ryzyka</label><input id="aaRisk" type="number" min="1" max="100"></div>
+      <div class="field"><label>Kanał logów</label><select id="aaLog"></select></div>
+    </div><div class="actions"><button class="btn saveBtn">Zapisz</button></div></section>
+
+    <section id="reactionroles" class="panel"><div class="top"><div><h2>Reaction Roles</h2><p>Automatyczne role platform i popularnych gier po kliknięciu reakcji.</p></div></div><div class="form">
+      <div class="field"><label>Status</label><select id="rrEnabled"><option value="true">Włączone</option><option value="false">Wyłączone</option></select></div>
+      <div class="field"><label>Kanał panelu</label><select id="rrChannel"></select></div>
+    </div><div class="actions"><button class="btn saveBtn">Zapisz</button><button class="btn secondary" data-action="createReactionRolesPanel">Utwórz panel i role</button></div></section>
+
+    <section id="guard" class="panel"><div class="top"><div><h2>Channel Guard</h2><p>Ochrona przed nieautoryzowanym tworzeniem kanałów.</p></div></div><div class="form">
       <div class="field"><label>Status</label><select id="cgEnabled"><option value="true">Włączony</option><option value="false">Wyłączony</option></select></div>
       <div class="field"><label>Blokuj nowe kanały</label><select id="cgBlock"><option value="true">Tak</option><option value="false">Nie</option></select></div>
       <div class="field"><label>Kanał logów</label><select id="cgLog"></select></div>
-    </div><div class="actions"><button class="btn" onclick="save()">💾 Zapisz</button></div>
-  </section>
+      <div class="field"><label>Role z wyjątkiem</label><select id="cgRoles" multiple></select><small>Ctrl/Cmd pozwala wybrać kilka ról.</small></div>
+    </div><div class="actions"><button class="btn saveBtn">Zapisz</button></div></section>
 
-  <section id="verify" class="panel">
-    <div class="top"><div><h1>✅ Weryfikacja</h1><p>Skonfiguruj role, kanał i wyślij aktualny panel z wyborem języka.</p></div></div>
-    <div class="notice">Po wejściu użytkownik dostaje rolę <b>Niezweryfikowany</b>. Po kliknięciu Verify bot ją usuwa i nadaje <b>Member</b>.</div>
-    <div class="verify-layout">
-      <div>
-        <div class="form">
-          <div class="field"><label>Status</label><select id="vfEnabled"><option value="true">Włączona</option><option value="false">Wyłączona</option></select></div>
-          <div class="field"><label>Rola po weryfikacji</label><select id="vfRole"></select><small>Najczęściej: @Member</small></div>
-          <div class="field"><label>Rola przed weryfikacją</label><select id="vfUnverifiedRole"></select><small>Najczęściej: @Niezweryfikowany</small></div>
-          <div class="field"><label>Kanał panelu</label><select id="vfChannel"></select></div>
-        </div>
-        <div class="actions">
-          <button class="btn" onclick="save()">💾 Zapisz</button>
-          <button class="btn secondary" onclick="sendVerify()">📤 Wyślij aktualny panel</button>
-          <button class="btn secondary" onclick="loadConfig()">↩ Odśwież dane</button>
-        </div>
-      </div>
-      <div class="verify-preview">
-        <h3 style="margin-top:0">Podgląd panelu Discord</h3>
-        <div class="verify-discord">
-          <div class="verify-embed">
-            <div class="verify-embed-title">✅ Weryfikacja / Verification — FenixExelent</div>
-            <div class="verify-embed-text">🇵🇱 <b>Polski</b>
-Aby uzyskać dostęp do serwera, kliknij przycisk poniżej.
+    <section id="verify" class="panel"><div class="top"><div><h2>Weryfikacja</h2><p>Role przed i po weryfikacji oraz kanał panelu.</p></div></div><div class="form">
+      <div class="field"><label>Status</label><select id="vfEnabled"><option value="true">Włączona</option><option value="false">Wyłączona</option></select></div>
+      <div class="field"><label>Rola po weryfikacji</label><select id="vfRole"></select></div>
+      <div class="field"><label>Rola przed weryfikacją</label><select id="vfUnverifiedRole"></select></div>
+      <div class="field"><label>Kanał panelu</label><select id="vfChannel"></select></div>
+    </div><div class="actions"><button class="btn saveBtn">Zapisz</button><button class="btn secondary" data-action="sendVerificationPanel">Wyślij panel</button></div></section>
 
-📜 Upewnij się, że przeczytałeś/aś regulamin.
-
-━━━━━━━━━━━━━━━━━━━━
-
-🇬🇧 <b>English</b>
-To access the server, click the button below.
-
-📜 Make sure you have read the rules.
-
-━━━━━━━━━━━━━━━━━━━━
-
-🌍 <b>Wybór języka / Language selection</b>
-Wybierz język, aby otrzymać odpowiednią rolę.</div>
-            <div class="verify-footer">FenixExelent 🔥 • teraz</div>
-          </div>
-          <div class="verify-buttons">
-            <button class="primary">✅ Verify / Zweryfikuj się</button>
-            <button>🇵🇱 Polski</button><button>🇬🇧 English</button><button>🇹🇷 Türkçe</button><button>🇩🇪 Deutsch</button><button>🇫🇷 Français</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section id="tickets" class="panel"><div class="top"><div><h1>🎫 Tickety</h1><p>Support, logi i panel otwierania ticketów.</p></div></div>
-    <div class="form">
+    <section id="tickets" class="panel"><div class="top"><div><h2>Tickety</h2><p>Rola supportu, kategoria, logi i panel otwierania.</p></div></div><div class="form">
       <div class="field"><label>Status</label><select id="tkEnabled"><option value="true">Włączone</option><option value="false">Wyłączone</option></select></div>
       <div class="field"><label>Rola supportu</label><select id="tkRole"></select></div>
+      <div class="field"><label>Kategoria ticketów</label><select id="tkCategory"></select></div>
       <div class="field"><label>Kanał logów</label><select id="tkLogs"></select></div>
       <div class="field"><label>Kanał panelu</label><select id="tkChannel"></select></div>
-    </div><div class="actions"><button class="btn" onclick="save()">💾 Zapisz</button><button class="btn secondary" onclick="sendTicket()">📤 Wyślij panel</button></div>
-  </section>
+    </div><div class="actions"><button class="btn saveBtn">Zapisz</button><button class="btn secondary" data-action="sendTicketPanel">Wyślij panel</button></div></section>
 
-  <section id="logs" class="panel"><div class="top"><div><h1>📋 Logi</h1><p>Główne kanały logowania akcji bota.</p></div></div>
-    <div class="form">
-      <div class="field"><label>Mod Log</label><select id="modLog"></select></div>
-    </div><div class="actions"><button class="btn" onclick="save()">💾 Zapisz</button></div>
-  </section>
-</main>
+    <section id="staff" class="panel"><div class="top"><div><h2>Staff i logi</h2><p>Role uprawnione do obsługi bota oraz główny kanał moderacji.</p></div></div><div class="form">
+      <div class="field"><label>Rola administratora bota</label><select id="adminRole"></select></div>
+      <div class="field"><label>Rola moderatora bota</label><select id="modRole"></select></div>
+      <div class="field"><label>Główny Mod Log</label><select id="modLog"></select></div>
+    </div><div class="actions"><button class="btn saveBtn">Zapisz</button><button class="btn secondary" data-action="refreshStats">Odśwież kanały statystyk</button></div></section>
+
+    <section id="security" class="panel"><div class="top"><div><h2>Centrum bezpieczeństwa</h2><p>Emergency Mode, wyjątki filtrów, odwołania i backupy.</p></div></div>
+      <div id="securitySummary" class="notice">Wybierz serwer, aby pobrać wynik bezpieczeństwa.</div>
+      <div class="form">
+        <div class="field"><label>Kanały ignorowane przez filtry</label><select id="igChannels" multiple></select></div>
+        <div class="field"><label>Role ignorowane przez filtry</label><select id="igRoles" multiple></select></div>
+        <div class="field"><label>System odwołań</label><select id="apEnabled"><option value="true">Włączony</option><option value="false">Wyłączony</option></select></div>
+        <div class="field"><label>Kanał odwołań</label><select id="apChannel"></select></div>
+      </div>
+      <div class="actions"><button class="btn saveBtn">Zapisz wyjątki i odwołania</button><button class="btn danger" data-action="emergencyOn">Włącz Emergency</button><button class="btn good" data-action="emergencyOff">Wyłącz Emergency</button></div>
+      <div class="cards" style="margin-top:18px"><div class="tool"><h3>Backupy</h3><div class="actions"><button class="btn secondary" data-action="createBackup">Utwórz backup</button><select id="backupSelect" class="guild-select" style="max-width:360px;margin:0"><option value="">Wybierz backup</option></select><button id="restoreBackupBtn" class="btn warn">Przywróć</button></div><div id="backupList" class="list"></div></div><div class="tool"><h3>Ostatnie odwołania</h3><div id="appealList" class="list"></div></div></div>
+    </section>
+
+    <section id="moderation" class="panel"><div class="top"><div><h2>Moderacja</h2><p>Akcje wykonywane przez bota są rejestrowane w audycie.</p></div></div><div class="notice">Używaj numerycznego ID użytkownika Discord. Akcje kick/ban są natychmiastowe.</div><div class="form">
+      <div class="field"><label>ID użytkownika</label><input id="modUserId" inputmode="numeric" placeholder="123456789012345678"></div>
+      <div class="field"><label>Powód</label><input id="modReason" maxlength="500" placeholder="Powód akcji"></div>
+      <div class="field wide"><div class="actions"><button class="btn warn" data-mod="warn">Nadaj warn</button><button class="btn secondary" data-mod="unmute">Zdejmij mute</button><button class="btn secondary" data-mod="clearwarns">Wyczyść warny</button><button class="btn warn" data-mod="kick">Kick</button><button class="btn danger" data-mod="ban">Ban</button><button class="btn good" data-mod="unban">Unban</button><button class="btn secondary" id="showWarnsBtn">Pokaż warny</button><button class="btn secondary" id="showRiskBtn">Pokaż risk</button></div></div>
+      <div class="field wide"><label>Wynik</label><div id="modOutput" class="output">Brak danych.</div></div>
+    </div></section>
+  </main>
 </div>
 <div id="toast" class="toast"></div>
 
 <script>
-let selectedGuild = new URLSearchParams(location.search).get('guild') || localStorage.getItem('selectedGuild');
-let meta = {channels:[], roles:[]};
-
-function tab(id,btn){document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));document.getElementById(id).classList.add('active');document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('active'));btn.classList.add('active')}
-function bool(v){return v===true||v==='true'} function toastMsg(t,ok=true){toast.textContent=t;toast.style.display='block';toast.style.background=ok?'#052e16':'#3b0a0a';setTimeout(()=>toast.style.display='none',2500)}
-function setBadge(el,on){el.className='badge '+(on?'on':'off');el.textContent=on?'✅ Włączony':'❌ Wyłączony'}
-
-async function loadMe(){
-  const r=await fetch('/api/me'); const me=await r.json();
-  if(!me.loggedIn){loginBtn.style.display='block';return}
-  loginBtn.style.display='none'; userBox.style.display='block'; userBox.innerHTML=`<img src="${me.user.avatar}"><b>${me.user.username}</b>`;
-  await loadGuilds(); await refresh();
-}
-async function loadGuilds(){
-  const r=await fetch('/api/guilds'); if(!r.ok)return; const guilds=await r.json();
-  guildSelect.innerHTML='<option value="">Wybierz serwer</option>';
-  guilds.forEach(g=>{let o=document.createElement('option');o.value=g.id;o.textContent=`${g.name} ${g.hasBot?'✅':'❌'}`;guildSelect.appendChild(o)});
-  if(selectedGuild) guildSelect.value=selectedGuild;
-  guildSelect.onchange=async()=>{selectedGuild=guildSelect.value;localStorage.setItem('selectedGuild',selectedGuild);await refresh();toastMsg('✅ Wybrano serwer')}
-}
-async function loadMeta(){
-  if(!selectedGuild)return;
-  const r=await fetch('/api/guild/'+selectedGuild+'/meta'); if(!r.ok){meta={channels:[],roles:[]}; return}
-  meta=await r.json(); fillSelects();
-}
-function fill(sel,items,type){sel.innerHTML='<option value="">Brak / wybierz</option>';items.forEach(i=>{let o=document.createElement('option');o.value=i.id;o.textContent=(type==='role'?'@':'#')+i.name;sel.appendChild(o)})}
-function fillSelects(){
-  [asLog,arLog,cgLog,vfChannel,tkLogs,tkChannel,modLog].forEach(s=>fill(s,meta.channels,'channel'));
-  [vfRole,vfUnverifiedRole,tkRole].forEach(s=>fill(s,meta.roles,'role'));
-}
-async function loadConfig(){
-  if(!selectedGuild)return;
-  await loadMeta();
-  const r=await fetch('/api/config/'+selectedGuild); if(!r.ok)return; const c=await r.json();
-  asEnabled.value=String(c.antispam.enabled); asMax.value=c.antispam.maxMessages; asTime.value=c.antispam.interval/1000; asMute.value=c.antispam.muteMinutes; asLog.value=c.antispam.logChannel||'';
-  arEnabled.value=String(c.antiraid.enabled); arJoins.value=c.antiraid.joinThreshold; arTime.value=c.antiraid.joinInterval/1000; arAction.value=c.antiraid.action; arLock.value=String(c.antiraid.lockdownActive); arLog.value=c.antiraid.logChannel||'';
-  cgEnabled.value=String(c.channelGuard.enabled); cgBlock.value=String(c.channelGuard.blockNewChannels); cgLog.value=c.channelGuard.logChannel||'';
-  vfEnabled.value=String(c.verification.enabled); vfRole.value=c.verification.roleId||c.verification.verifiedRoleId||''; vfUnverifiedRole.value=c.verification.unverifiedRoleId||''; vfChannel.value=c.verification.channelId||'';
-  tkEnabled.value=String(c.tickets.enabled); tkRole.value=c.tickets.supportRoleId||''; tkLogs.value=c.tickets.logChannelId||''; tkChannel.value=c.tickets.panelChannelId||'';
-  modLog.value=c.modLog?.channelId||'';
-  setBadge(bAS,c.antispam.enabled);setBadge(bAR,c.antiraid.enabled);setBadge(bCG,c.channelGuard.blockNewChannels);setBadge(bVF,c.verification.enabled);setBadge(bTK,c.tickets.enabled);
-}
-function body(extra={}){
-  return {
-    antispam:{enabled:bool(asEnabled.value),maxMessages:+asMax.value,interval:+asTime.value*1000,muteMinutes:+asMute.value,logChannel:asLog.value||null},
-    antiraid:{enabled:bool(arEnabled.value),joinThreshold:+arJoins.value,joinInterval:+arTime.value*1000,action:arAction.value,lockdownActive:bool(arLock.value),logChannel:arLog.value||null},
-    channelGuard:{enabled:bool(cgEnabled.value),blockNewChannels:bool(cgBlock.value),logChannel:cgLog.value||null},
-    verification:{enabled:bool(vfEnabled.value),roleId:vfRole.value||null,verifiedRoleId:vfRole.value||null,unverifiedRoleId:vfUnverifiedRole.value||null,channelId:vfChannel.value||null},
-    tickets:{enabled:bool(tkEnabled.value),supportRoleId:tkRole.value||null,logChannelId:tkLogs.value||null,panelChannelId:tkChannel.value||null},
-    modLog:{channelId:modLog.value||null},
-    actions: extra
-  };
-}
-async function save(extra={}){
-  if(!selectedGuild)return toastMsg('❌ Wybierz serwer',false);
-  const r=await fetch('/api/config/'+selectedGuild,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body(extra))});
-  if(r.ok){toastMsg('✅ Zapisano i zsynchronizowano z Discordem');await loadConfig()} else toastMsg('❌ Błąd zapisu',false);
-}
-async function sendVerify(){vfEnabled.value='true';await save({sendVerificationPanel:true})}
-async function sendTicket(){tkEnabled.value='true';await save({sendTicketPanel:true})}
-async function refresh(){await loadConfig();const r=await fetch('/api/stats');if(!r.ok)return;const s=await r.json();sGuilds.textContent=s.guilds;sUsers.textContent=s.users;sPing.textContent=s.ping+'ms';sUp.textContent=Math.floor(s.uptime/60)+' min'}
-loadMe();
+  const $=id=>document.getElementById(id);let selectedGuild=new URLSearchParams(location.search).get('guild')||localStorage.getItem('selectedGuild')||'';let meta={channels:[],categories:[],roles:[]};
+  const bool=v=>v===true||v==='true';const lines=v=>String(v||'').split(/[\n,]+/).map(x=>x.trim()).filter(Boolean);const selected=id=>[...$(id).selectedOptions].map(o=>o.value).filter(Boolean);
+  function toast(message,ok=true){const el=$('toast');el.textContent=message;el.style.display='block';el.style.background=ok?'#052e16':'#450a0a';el.style.border=`1px solid ${ok?'#22c55e':'#ef4444'}`;clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.style.display='none',3500)}
+  async function api(url,options){const response=await fetch(url,options);let data={};try{data=await response.json()}catch{}if(!response.ok)throw new Error(data.error||`Błąd HTTP ${response.status}`);return data}
+  function setBadge(id,on){const el=$(id);el.className='badge '+(on?'on':'off');el.textContent=on?'Włączony':'Wyłączony'}
+  function openTab(id,button){document.querySelectorAll('.panel').forEach(el=>el.classList.toggle('active',el.id===id));document.querySelectorAll('#nav button').forEach(el=>el.classList.toggle('active',el===button));if(id==='security')loadSecurity().catch(showError)}
+  document.querySelectorAll('[data-tab]').forEach(button=>button.addEventListener('click',()=>openTab(button.dataset.tab,button)));document.querySelectorAll('[data-link]').forEach(button=>button.addEventListener('click',()=>location.href=button.dataset.link));
+  function showError(error){toast(error.message||String(error),false)}
+  function fillSelect(id,items,prefix='',multiple=false){const el=$(id);const old=multiple?selected(id):el.value;el.innerHTML=multiple?'':'<option value="">Brak / wybierz</option>';for(const item of items){const option=document.createElement('option');option.value=item.id;option.textContent=prefix+item.name;el.appendChild(option)}if(multiple)[...el.options].forEach(o=>o.selected=old.includes(o.value));else el.value=old}
+  function setMulti(id,values){const set=new Set(values||[]);[...$(id).options].forEach(o=>o.selected=set.has(o.value))}
+  async function loadMe(){const me=await api('/api/me');if(!me.loggedIn){$('loginBtn').style.display='block';return}$('loginBtn').style.display='none';const box=$('userBox');box.style.display='flex';box.textContent='';if(me.user.avatar){const img=document.createElement('img');img.src=me.user.avatar;img.alt='';box.appendChild(img)}const name=document.createElement('b');name.textContent=me.user.username;box.appendChild(name);await loadGuilds()}
+  async function loadGuilds(){const guilds=await api('/api/guilds');const selectEl=$('guildSelect');selectEl.innerHTML='<option value="">Wybierz serwer</option>';guilds.forEach(g=>{const option=document.createElement('option');option.value=g.id;option.textContent=g.name;selectEl.appendChild(option)});if(!selectedGuild&&guilds.length===1)selectedGuild=guilds[0].id;selectEl.value=selectedGuild;selectEl.onchange=async()=>{selectedGuild=selectEl.value;localStorage.setItem('selectedGuild',selectedGuild);await refreshAll()};await refreshAll()}
+  async function loadMeta(){if(!selectedGuild)return;meta=await api(`/api/guild/${selectedGuild}/meta`);['asLog','arLog','scLog','aaLog','rrChannel','cgLog','vfChannel','tkLogs','tkChannel','modLog','apChannel'].forEach(id=>fillSelect(id,meta.channels,'#'));['vfRole','vfUnverifiedRole','tkRole','adminRole','modRole'].forEach(id=>fillSelect(id,meta.roles,'@'));fillSelect('tkCategory',meta.categories,'📁 ');fillSelect('cgRoles',meta.roles,'@',true);fillSelect('igRoles',meta.roles,'@',true);fillSelect('igChannels',meta.channels,'#',true)}
+  async function loadConfig(){if(!selectedGuild)return;await loadMeta();const c=await api(`/api/config/${selectedGuild}`);$('asEnabled').value=String(c.antispam?.enabled??true);$('asMax').value=c.antispam?.maxMessages??5;$('asTime').value=(c.antispam?.interval??3000)/1000;$('asMute').value=c.antispam?.muteMinutes??10;$('asLog').value=c.antispam?.logChannel||'';
+    $('arEnabled').value=String(c.antiraid?.enabled??true);$('arJoins').value=c.antiraid?.joinThreshold??10;$('arTime').value=(c.antiraid?.joinInterval??10000)/1000;$('arAction').value=c.antiraid?.action||'kick';$('arLock').value=String(c.antiraid?.lockdownActive??false);$('arLog').value=c.antiraid?.logChannel||'';
+    $('scEnabled').value=String(c.antiscam?.enabled??true);$('scDelete').value=String(c.antiscam?.deleteMessage??true);$('scMute').value=c.antiscam?.muteMinutes??60;$('scLog').value=c.antiscam?.logChannel||'';$('scBlockImages').value=String(c.antiscam?.blockScamImages??true);$('scOcr').value=String(c.antiscam?.ocrScamImages??true);$('scStrict').value=String(c.antiscam?.blockImageOnlyScamScreenshots??false);$('scOcrScore').value=c.antiscam?.ocrMinScamScore??3;$('scWhitelist').value=(c.antiscam?.whitelistedDomains||[]).join('\n');$('scBlocked').value=(c.antiscam?.blockedDomains||[]).join('\n');
+    $('aaEnabled').value=String(c.antialt?.enabled??false);$('aaDays').value=c.antialt?.minAccountAgeDays??7;$('aaAction').value=c.antialt?.action||'verify';$('aaRisk').value=c.antialt?.riskPoints??20;$('aaLog').value=c.antialt?.logChannel||'';
+    $('rrEnabled').value=String(c.reactionRoles?.enabled??false);$('rrChannel').value=c.reactionRoles?.channelId||'';
+    $('cgEnabled').value=String(c.channelGuard?.enabled??false);$('cgBlock').value=String(c.channelGuard?.blockNewChannels??false);$('cgLog').value=c.channelGuard?.logChannel||'';setMulti('cgRoles',c.channelGuard?.whitelistedRoles);
+    $('vfEnabled').value=String(c.verification?.enabled??false);$('vfRole').value=c.verification?.roleId||c.verification?.verifiedRoleId||'';$('vfUnverifiedRole').value=c.verification?.unverifiedRoleId||'';$('vfChannel').value=c.verification?.channelId||'';
+    $('tkEnabled').value=String(c.tickets?.enabled??false);$('tkRole').value=c.tickets?.supportRoleId||'';$('tkCategory').value=c.tickets?.categoryId||'';$('tkLogs').value=c.tickets?.logChannelId||'';$('tkChannel').value=c.tickets?.panelChannelId||'';
+    $('adminRole').value=c.adminRole||'';$('modRole').value=c.modRole||'';$('modLog').value=c.modLog?.channelId||'';setMulti('igChannels',c.securityIgnore?.channels);setMulti('igRoles',c.securityIgnore?.roles);$('apEnabled').value=String(c.appeals?.enabled??true);$('apChannel').value=c.appeals?.channelId||'';
+    setBadge('bAS',c.antispam?.enabled);setBadge('bAR',c.antiraid?.enabled);setBadge('bSC',c.antiscam?.enabled);setBadge('bAA',c.antialt?.enabled);setBadge('bRR',c.reactionRoles?.enabled);setBadge('bCG',c.channelGuard?.blockNewChannels);setBadge('bVF',c.verification?.enabled);setBadge('bTK',c.tickets?.enabled);setBadge('bEM',c.emergency?.active)}
+  function payload(actions={}){return{antispam:{enabled:bool($('asEnabled').value),maxMessages:+$('asMax').value,interval:+$('asTime').value*1000,muteMinutes:+$('asMute').value,logChannel:$('asLog').value||null},antiraid:{enabled:bool($('arEnabled').value),joinThreshold:+$('arJoins').value,joinInterval:+$('arTime').value*1000,action:$('arAction').value,lockdownActive:bool($('arLock').value),logChannel:$('arLog').value||null},antiscam:{enabled:bool($('scEnabled').value),deleteMessage:bool($('scDelete').value),muteMinutes:+$('scMute').value,logChannel:$('scLog').value||null,blockScamImages:bool($('scBlockImages').value),ocrScamImages:bool($('scOcr').value),blockImageOnlyScamScreenshots:bool($('scStrict').value),ocrMinScamScore:+$('scOcrScore').value,whitelistedDomains:lines($('scWhitelist').value),blockedDomains:lines($('scBlocked').value)},antialt:{enabled:bool($('aaEnabled').value),minAccountAgeDays:+$('aaDays').value,action:$('aaAction').value,riskPoints:+$('aaRisk').value,logChannel:$('aaLog').value||null},reactionRoles:{enabled:bool($('rrEnabled').value),channelId:$('rrChannel').value||null},channelGuard:{enabled:bool($('cgEnabled').value),blockNewChannels:bool($('cgBlock').value),logChannel:$('cgLog').value||null,whitelistedRoles:selected('cgRoles')},verification:{enabled:bool($('vfEnabled').value),roleId:$('vfRole').value||null,verifiedRoleId:$('vfRole').value||null,unverifiedRoleId:$('vfUnverifiedRole').value||null,channelId:$('vfChannel').value||null},tickets:{enabled:bool($('tkEnabled').value),supportRoleId:$('tkRole').value||null,categoryId:$('tkCategory').value||null,logChannelId:$('tkLogs').value||null,panelChannelId:$('tkChannel').value||null},modLog:{channelId:$('modLog').value||null},modRole:$('modRole').value||null,adminRole:$('adminRole').value||null,securityIgnore:{channels:selected('igChannels'),roles:selected('igRoles')},appeals:{enabled:bool($('apEnabled').value),channelId:$('apChannel').value||null},actions}}
+  async function save(actions={}){if(!selectedGuild)throw new Error('Wybierz serwer');const data=await api(`/api/config/${selectedGuild}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload(actions))});toast('Zapisano i zsynchronizowano z Discordem');await loadConfig();await loadSecurity();return data}
+  document.querySelectorAll('.saveBtn').forEach(button=>button.addEventListener('click',()=>save().catch(showError)));document.querySelectorAll('[data-action]').forEach(button=>button.addEventListener('click',()=>{const action=button.dataset.action;const dangerous=action==='emergencyOn';if(dangerous&&!confirm('Włączyć Emergency Mode i zablokować pisanie na serwerze?'))return;save({[action]:true}).catch(showError)}));
+  async function loadSecurity(){if(!selectedGuild)return;const data=await api(`/api/security/${selectedGuild}`);$('securitySummary').textContent=`Wynik bezpieczeństwa: ${data.score.score}/100 · Emergency: ${data.emergencyActive?'AKTYWNY':'wyłączony'} · Zablokowane scamy: ${data.stats.scamsBlocked||0} · Wykryte raidy: ${data.stats.raidsDetected||0}`;const selectEl=$('backupSelect');selectEl.innerHTML='<option value="">Wybierz backup</option>';$('backupList').textContent='';data.backups.forEach(b=>{const option=document.createElement('option');option.value=b.id;option.textContent=`${b.id} · ${new Date(b.createdAt).toLocaleString('pl-PL')}`;selectEl.appendChild(option);const item=document.createElement('div');item.className='list-item';item.textContent=`${b.id} — ${b.roles} ról, ${b.channels} kanałów`;$('backupList').appendChild(item)});if(!data.backups.length)$('backupList').textContent='Brak backupów.';$('appealList').textContent='';data.appeals.slice(0,10).forEach(a=>{const item=document.createElement('div');item.className='list-item';item.textContent=`${a.id} · ${a.userTag||a.userId} · ${a.status}`;$('appealList').appendChild(item)});if(!data.appeals.length)$('appealList').textContent='Brak odwołań.';setBadge('bEM',data.emergencyActive)}
+  $('restoreBackupBtn').addEventListener('click',()=>{const id=$('backupSelect').value;if(!id)return showError(new Error('Wybierz backup'));if(confirm(`Przywrócić backup ${id}? Bot odtworzy brakujące role, kanały i ustawienia.`))save({restoreBackupId:id}).catch(showError)});
+  async function moderation(action){if(!selectedGuild)throw new Error('Wybierz serwer');const userId=$('modUserId').value.trim();const reason=$('modReason').value.trim();if(!/^\d{15,22}$/.test(userId))throw new Error('Podaj poprawne ID użytkownika');if(['kick','ban'].includes(action)&&!confirm(`Na pewno wykonać ${action.toUpperCase()} dla ${userId}?`))return;const data=await api(`/api/mod/${selectedGuild}/${action}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId,reason})});$('modOutput').textContent=JSON.stringify(data,null,2);toast('Akcja wykonana')}
+  document.querySelectorAll('[data-mod]').forEach(button=>button.addEventListener('click',()=>moderation(button.dataset.mod).catch(showError)));$('showWarnsBtn').addEventListener('click',async()=>{try{const id=$('modUserId').value.trim();const data=await api(`/api/mod/${selectedGuild}/warns/${id}`);$('modOutput').textContent=data.length?data.map((w,i)=>`${i+1}. ${w.reason} — ${w.mod} — ${new Date(w.date).toLocaleString('pl-PL')}`).join('\n'):'Brak ostrzeżeń.'}catch(e){showError(e)}});$('showRiskBtn').addEventListener('click',async()=>{try{const id=$('modUserId').value.trim();const data=await api(`/api/risk/${selectedGuild}/${id}`);$('modOutput').textContent=`Score: ${data.score||0}/100\n`+(data.events||[]).map(e=>`${e.points>0?'+':''}${e.points} — ${e.reason}`).join('\n')}catch(e){showError(e)}});
+  async function refreshStats(){const s=await api('/api/stats');$('sGuilds').textContent=s.guilds;$('sUsers').textContent=s.users;$('sPing').textContent=(s.ping>=0?s.ping:'–')+' ms';$('sUp').textContent=Math.floor(s.uptime/60)+' min'}
+  async function refreshAll(){await refreshStats();if(selectedGuild){await loadConfig();await loadSecurity()}}
+  $('refreshBtn').addEventListener('click',()=>refreshAll().then(()=>toast('Dane odświeżone')).catch(showError));
+  const errorCode=new URLSearchParams(location.search).get('error');if(errorCode){$('pageNotice').hidden=false;$('pageNotice').textContent=`Logowanie nie powiodło się: ${errorCode}`}
+  loadMe().catch(showError);
 </script>
 </body>
 </html>

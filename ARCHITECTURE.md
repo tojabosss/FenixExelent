@@ -1,48 +1,26 @@
-# Architektura FenixExelent v3.1
-
-## Warstwy
-
-### `index.js`
-Minimalny punkt wejścia aplikacji.
-
-### `src/application.js`
-Aktualny moduł integracyjny Discord + HTTP. Kolejny etap refaktoryzacji może rozdzielić go na `commands`, `events`, `dashboard` i moduły funkcjonalne bez zmiany warstwy bazy.
-
-### `src/services/database.js`
-Asynchroniczna warstwa PostgreSQL oparta o `pg.Pool`.
-
-- inicjalizuje schemat,
-- ładuje konfigurację wszystkich serwerów,
-- zapisuje JSONB przez UPSERT,
-- kolejkuje zapisy,
-- zapisuje audit log,
-- migruje stary `config.json`.
-
-### `src/services/logger.js`
-Pino z redakcją sekretów oraz metodami do logowania błędów komend i przycisków.
-
-### `src/config/defaultGuildConfig.js`
-Domyślna konfiguracja nowego serwera.
-
-## Model danych
-
-`guild_config.config_json` jest typu JSONB. Pozwala zachować zgodność z dotychczasowym modelem konfiguracji, a później stopniowo wydzielać często używane dane do osobnych tabel.
-
-## Następny etap modułowości
+# Architektura FenixExelent 3.2
 
 ```text
-src/
-  commands/
-  events/
-  modules/
-    verification/
-    tickets/
-    antispam/
-    antiraid/
-    antiscam/
-    moderation/
-  dashboard/
-  services/
+index.js                         punkt startowy
+deploy-commands.js               wdrażanie komend z jednej listy
+src/application.js               Discord, moduły ochrony i zdarzenia
+src/commands.js                  38 definicji komend i uprawnienia
+src/config/defaultGuildConfig.js pełna konfiguracja serwera
+src/services/database.js         PostgreSQL lub lokalny JSON
+src/services/logger.js           bezpieczne logowanie
+src/dashboard/server.js          OAuth2, API, sesje i audyt
+src/dashboard/configValidation.js walidacja danych panelu
+dashboard/public/dashboard.html  kompletny panel administracyjny
+scripts/check.js                 kontrola kodu i zgodności komend
+scripts/db-check.js              test zapisu danych
+scripts/smoke.js                 test startu aplikacji i HTTP
 ```
 
-Przenoszenie powinno następować moduł po module, z testami regresji po każdym kroku.
+## Zasady
+
+- `index.js` uruchamia wyłącznie `src/application.js`.
+- `src/commands.js` jest jedynym źródłem definicji komend Discord.
+- Komendy mają domyślne uprawnienia Discord oraz ponowną kontrolę w handlerze.
+- Dashboard zapisuje wyłącznie pola zaakceptowane przez walidator.
+- Działania skutkowe, takie jak lockdown, Emergency Mode i backup restore, są osobnymi akcjami API.
+- PostgreSQL jest zalecany w produkcji; lokalny JSON pozwala uruchomić bota bez zewnętrznej bazy.

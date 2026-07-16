@@ -1,40 +1,45 @@
-
 'use strict';
 
 const util = require('util');
-const pino = require('pino');
 
-const isDevelopment = process.env.NODE_ENV !== 'production';
-const transport = isDevelopment
-  ? pino.transport({
-      target: 'pino-pretty',
-      options: { colorize: true, translateTime: 'SYS:standard', singleLine: false },
-    })
-  : undefined;
+let base = null;
+try {
+  const pino = require('pino');
+  const transport = process.env.NODE_ENV !== 'production'
+    ? pino.transport({ target: 'pino-pretty', options: { colorize: true, translateTime: 'SYS:standard' } })
+    : undefined;
+  base = pino({
+    level: process.env.LOG_LEVEL || 'info',
+    base: { service: 'fenixexelent-security' },
+    redact: {
+      paths: ['token', 'BOT_TOKEN', 'CLIENT_SECRET', 'SESSION_SECRET', '*.token', '*.authorization'],
+      censor: '[REDACTED]',
+    },
+  }, transport);
+} catch {
+  base = null;
+}
 
-const base = pino({
-  level: process.env.LOG_LEVEL || 'info',
-  base: { service: 'fenixexelent-security' },
-  redact: {
-    paths: ['token', 'BOT_TOKEN', 'CLIENT_SECRET', 'SESSION_SECRET', '*.token'],
-    censor: '[REDACTED]',
-  },
-}, transport);
-
-function normalizeArgs(args) {
+function normalize(args) {
   const values = Array.from(args);
   const error = values.find(value => value instanceof Error);
   const messageValues = values.filter(value => !(value instanceof Error));
-  return {
-    error,
-    message: util.format(...messageValues),
-  };
+  const object = messageValues.find(value => value && typeof value === 'object');
+  const printable = messageValues.filter(value => value !== object);
+  return { error, object, message: util.format(...printable) };
 }
 
 function write(level, ...args) {
-  const { error, message } = normalizeArgs(args);
-  if (error) base[level]({ err: error }, message || error.message);
-  else base[level](message);
+  const { error, object, message } = normalize(args);
+  if (base) {
+    const payload = { ...(object || {}) };
+    if (error) payload.err = error;
+    base[level](payload, message || error?.message || '');
+    return;
+  }
+  const method = level === 'fatal' ? 'error' : level === 'trace' ? 'debug' : level;
+  const prefix = `[${new Date().toISOString()}] ${level.toUpperCase()}`;
+  console[method]?.(prefix, message, object || '', error || '');
 }
 
 const logger = {
@@ -45,35 +50,21 @@ const logger = {
   warn: (...args) => write('warn', ...args),
   error: (...args) => write('error', ...args),
   fatal: (...args) => write('fatal', ...args),
-  child: bindings => base.child(bindings),
+  child: bindings => base?.child(bindings) || logger,
   commandError(error, interaction, commandName) {
-    base.error({
-      err: error,
-      event: 'command_error',
-      command: commandName,
-      guildId: interaction?.guildId || null,
-      channelId: interaction?.channelId || null,
+    write('error', error, {
+      event: 'command_error', command: commandName,
+      guildId: interaction?.guildId || null, channelId: interaction?.channelId || null,
       userId: interaction?.user?.id || null,
     }, `Command failed: ${commandName}`);
   },
   buttonError(error, interaction) {
-    base.error({
-      err: error,
-      event: 'button_error',
-      customId: interaction?.customId || null,
-      guildId: interaction?.guildId || null,
-      channelId: interaction?.channelId || null,
+    write('error', error, {
+      event: 'button_error', customId: interaction?.customId || null,
+      guildId: interaction?.guildId || null, channelId: interaction?.channelId || null,
       userId: interaction?.user?.id || null,
     }, `Button failed: ${interaction?.customId || 'unknown'}`);
   },
 };
-
-process.on('uncaughtException', error => {
-  base.fatal({ err: error, event: 'uncaught_exception' }, 'Uncaught exception');
-});
-
-process.on('unhandledRejection', error => {
-  base.error({ err: error, event: 'unhandled_rejection' }, 'Unhandled rejection');
-});
 
 module.exports = { logger };

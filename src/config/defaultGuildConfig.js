@@ -67,6 +67,7 @@ function defaultGuildConfig() {
       channels: [],
       roles: [],
     },
+    scamReports: {},
     backups: {},
     appeals: {
       enabled: true,
@@ -80,12 +81,13 @@ function defaultGuildConfig() {
     modLog: { channelId: null },
     warns: {},
     tickets: {
-  enabled: false,
-  categoryId: null,
-  supportRoleId: null,
-  logChannelId: null,
-  openTickets: {},
-},
+      enabled: false,
+      categoryId: null,
+      supportRoleId: null,
+      logChannelId: null,
+      panelChannelId: null,
+      openTickets: {},
+    },
 
 verification: {
   enabled: false,

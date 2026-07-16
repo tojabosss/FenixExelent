@@ -1,5 +1,16 @@
 node_modules/
+.npm-cache/
+.tools/
 .env
 config.json
+config.json.migrated
+data/
+coverage/
 *.log
+*.zip
+_archive/
+_cleanup_backup*/
+backups/
+README*.txt
+Wklejony*.txt
 .DS_Store
