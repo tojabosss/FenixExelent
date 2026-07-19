@@ -7,6 +7,7 @@ const session = require('express-session');
 const axios = require('axios');
 const { ChannelType, PermissionFlagsBits } = require('discord.js');
 const { sanitizeConfigPatch } = require('./configValidation');
+const { mountVerificationRoutes } = require('../modules/verification');
 
 const USER_ID_PATTERN = /^\d{15,22}$/;
 
@@ -53,6 +54,7 @@ async function startDashboardServer(options) {
     sendVerifyPanel, sendTicketPanel, enableEmergencyMode, disableEmergencyMode,
     createServerBackup, restoreServerBackup, updateStats, calculateServerSecurityScore,
     aggregateSecurityStats, formatUptime, sendModLog, policyHtml, createReactionRolesPanelForChannel,
+    verificationManager,
   } = options;
 
   const app = express();
@@ -63,10 +65,11 @@ async function startDashboardServer(options) {
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
     res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-    res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' https://cdn.discordapp.com data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://discord.com");
+    res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' https://cdn.discordapp.com data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com; connect-src 'self' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://discord.com");
     next();
   });
   app.use(express.json({ limit: '256kb', strict: true }));
+  app.use(express.urlencoded({ extended: false, limit: '32kb' }));
 
   let store;
   if (database.pool) {
@@ -89,6 +92,7 @@ async function startDashboardServer(options) {
 
   app.use('/api', createRateLimiter({ windowMs: 60_000, max: 180 }));
   const authLimiter = createRateLimiter({ windowMs: 60_000, max: 30 });
+  mountVerificationRoutes(app, { manager: verificationManager, logger });
   app.use(express.static(path.join(__dirname, '..', '..', 'dashboard', 'public'), { extensions: ['html'] }));
 
   const requireAuth = (req, res, next) => {
@@ -204,6 +208,10 @@ async function startDashboardServer(options) {
   });
 
   app.get('/api/config/:guildId', requireAuth, requireGuildAdmin, (req, res) => res.json(getGuildConfig(req.params.guildId)));
+
+  app.get('/api/verification/methods/:guildId', requireAuth, requireGuildAdmin, (req, res) => {
+    res.json({ methods: verificationManager.listMethods(req.params.guildId) });
+  });
 
   app.post('/api/config/:guildId', requireAuth, requireGuildAdmin, async (req, res) => {
     const guildId = req.params.guildId;

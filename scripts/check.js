@@ -33,6 +33,10 @@ assert.strictEqual(new Set(commandNames).size, commandNames.length, 'Command nam
 
 const applicationSource = fs.readFileSync(path.join(root, 'src', 'application.js'), 'utf8');
 const supportLanguages = defaultGuildConfig().supportLanguages;
+const verificationDefaults = defaultGuildConfig().verification;
+assert.deepStrictEqual(verificationDefaults.methods, ['web'], 'Web Verification must be enabled as the default method');
+assert.strictEqual(verificationDefaults.sessionTtlMinutes, 5, 'Verification sessions must expire after five minutes by default');
+assert.strictEqual(verificationDefaults.maxAttempts, 5, 'Verification attempt limit is missing');
 assert(supportLanguages && typeof supportLanguages === 'object', 'Default config is missing supportLanguages');
 assert.strictEqual(supportLanguages.enabled, true, 'Support languages must be enabled by default on the official guild');
 assert.deepStrictEqual(supportLanguages.supported, ['pl', 'en', 'tr', 'de', 'fr'], 'Invalid support language list');
@@ -48,6 +52,14 @@ assert(applicationSource.includes("interaction.customId.startsWith('supportlang:
 assert(applicationSource.includes('.setCustomId(`supportlang:${language.code}`)'), 'Support language panel buttons are missing');
 assert(applicationSource.includes("['Zweryfikowany', 'Verified', 'Członek', 'Member']"), 'Verified role recovery is missing');
 assert(applicationSource.includes('await member.roles.set([...finalRoleIds]'), 'Support language roles must be updated atomically');
+assert(applicationSource.includes('verificationManager.startSession({'), 'Verify button does not start a secure web session');
+assert(!applicationSource.includes('FenixExelent: weryfikacja przyciskiem'), 'Legacy one-click role assignment is still present');
+assert(applicationSource.includes('verificationManager.completeLanguage({'), 'Official language verification is not connected to the v4 flow');
+
+const verificationRoot = path.join(root, 'src', 'modules', 'verification');
+for (const relativePath of ['SessionManager.js', 'RateLimiter.js', 'PluginRegistry.js', 'VerificationManager.js', 'routes.js', 'plugins/web.js', 'plugins/language.js']) {
+  assert(fs.existsSync(path.join(verificationRoot, relativePath)), `Verification v4 file is missing: ${relativePath}`);
+}
 
 const commandAccessStart = applicationSource.indexOf('function canUseCommand');
 const commandAccessEnd = applicationSource.indexOf('function canUseStaffButton', commandAccessStart);
@@ -95,6 +107,14 @@ for (const file of walk(path.join(root, 'dashboard', 'public'), '.html')) {
 const dashboard = fs.readFileSync(path.join(root, 'dashboard', 'public', 'dashboard.html'), 'utf8');
 for (const feature of ['AntiSpam', 'AntiRaid', 'AntiScam i OCR', 'AntiAlt', 'Reaction Roles', 'Channel Guard', 'Weryfikacja', 'Tickety', 'Centrum bezpieczeństwa', 'Moderacja']) {
   assert(dashboard.includes(feature), `Dashboard is missing ${feature}`);
+}
+for (const id of ['vfMethods', 'vfLog', 'vfTtl', 'vfAttempts', 'vfRateWindow']) {
+  assert(dashboard.includes(`id="${id}"`), `Dashboard is missing verification field ${id}`);
+}
+
+const envExample = fs.readFileSync(path.join(root, '.env.example'), 'utf8');
+for (const key of ['TURNSTILE_SITE_KEY', 'TURNSTILE_SECRET_KEY', 'VERIFICATION_REDIRECT_URI']) {
+  assert(envExample.includes(`${key}=`), `.env.example is missing ${key}`);
 }
 
 const landing = fs.readFileSync(path.join(root, 'dashboard', 'public', 'index.html'), 'utf8');

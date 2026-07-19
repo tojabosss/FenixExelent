@@ -103,6 +103,11 @@ verification: {
   roleId: null,
   unverifiedRoleId: null,
   channelId: null,
+  logChannelId: null,
+  methods: ['web'],
+  sessionTtlMinutes: 5,
+  maxAttempts: 5,
+  rateLimitWindowMinutes: 10,
 },
 
 reactionRoles: {

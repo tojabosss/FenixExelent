@@ -12,9 +12,10 @@
     "deploy": "node deploy-commands.js",
     "dev": "nodemon index.js",
     "check": "node scripts/check.js",
+    "verification:check": "node scripts/verification-check.js",
     "db:check": "node scripts/db-check.js",
     "smoke": "node scripts/smoke.js",
-    "test": "npm run check && npm run db:check && npm run smoke"
+    "test": "npm run check && npm run verification:check && npm run db:check && npm run smoke"
   },
   "dependencies": {
     "axios": "^1.7.9",

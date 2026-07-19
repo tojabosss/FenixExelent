@@ -33,17 +33,21 @@
       <a class="button primary" href="/dashboard.html">Otwórz dashboard</a>
       <a class="button" href="/invite">Zaproś bota</a>
     </div>
-    <div class="notice"><strong>Ważne:</strong> w Discord Developer Portal włącz uprzywilejowane intencje <b>Server Members Intent</b> i <b>Message Content Intent</b>. Adres OAuth2 Redirect musi być identyczny z wartością <code>REDIRECT_URI</code>.</div>
+    <div class="notice"><strong>Ważne:</strong> w Discord Developer Portal włącz uprzywilejowane intencje <b>Server Members Intent</b> i <b>Message Content Intent</b>. Dodaj oba adresy OAuth2 Redirect: <code>REDIRECT_URI</code> oraz <code>VERIFICATION_REDIRECT_URI</code>.</div>
 
     <h2>Instalacja krok po kroku</h2>
     <div class="steps">
       <article class="step"><div class="number">1</div><div><h3>Przygotuj środowisko</h3><p>Zainstaluj Node.js 20.11 lub nowszy. Skopiuj plik <code>.env.example</code> jako <code>.env</code>.</p><div class="code">copy .env.example .env</div></div></article>
-      <article class="step"><div class="number">2</div><div><h3>Uzupełnij sekrety</h3><p>W pliku <code>.env</code> podaj token bota, Client ID, Client Secret, długi losowy Session Secret oraz adres dashboardu i callbacku.</p><div class="code">BOT_TOKEN=...
+      <article class="step"><div class="number">2</div><div><h3>Uzupełnij sekrety</h3><p>W pliku <code>.env</code> podaj token bota, dane Discord OAuth2, długi losowy Session Secret, adresy callbacków oraz klucze Cloudflare Turnstile.</p><div class="code">BOT_TOKEN=...
 CLIENT_ID=...
 CLIENT_SECRET=...
 SESSION_SECRET=minimum-32-losowe-znaki
 DASHBOARD_URL=https://twoja-domena.example
-REDIRECT_URI=https://twoja-domena.example/callback</div></div></article>
+REDIRECT_URI=https://twoja-domena.example/callback
+VERIFICATION_REDIRECT_URI=https://twoja-domena.example/verification/callback
+TURNSTILE_SITE_KEY=...
+TURNSTILE_SECRET_KEY=...
+TURNSTILE_EXPECTED_HOSTNAME=twoja-domena.example</div></div></article>
       <article class="step"><div class="number">3</div><div><h3>Zainstaluj i sprawdź</h3><p>Test obejmuje kod, konfigurację, lokalną bazę i prawdziwe uruchomienie serwera WWW.</p><div class="code">npm install
 npm test</div></div></article>
       <article class="step"><div class="number">4</div><div><h3>Wgraj 38 komend slash</h3><p>Po każdej zmianie listy komend wykonaj wdrożenie ponownie.</p><div class="code">npm run deploy</div></div></article>

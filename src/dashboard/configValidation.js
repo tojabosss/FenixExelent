@@ -25,6 +25,12 @@ function domains(value) {
     .filter(item => /^(?:[a-z0-9-]+\.)+[a-z]{2,}$/i.test(item)))]
     .slice(0, 500);
 }
+function methodIds(value) {
+  if (!Array.isArray(value)) return undefined;
+  const result = [...new Set(value.map(item => String(item || '').trim().toLowerCase())
+    .filter(item => /^[a-z][a-z0-9_-]{0,31}$/.test(item)))].slice(0, 10);
+  return result.length ? result : undefined;
+}
 function pick(source, schema) {
   if (!source || typeof source !== 'object' || Array.isArray(source)) return undefined;
   const result = {};
@@ -65,7 +71,9 @@ function sanitizeConfigPatch(body) {
     enabled: bool, blockNewChannels: bool, whitelistedRoles: ids, logChannel: id,
   }));
   add('verification', pick(body.verification, {
-    enabled: bool, roleId: id, verifiedRoleId: id, unverifiedRoleId: id, channelId: id,
+    enabled: bool, roleId: id, verifiedRoleId: id, unverifiedRoleId: id, channelId: id, logChannelId: id,
+    methods: methodIds, sessionTtlMinutes: v => number(v, 2, 30), maxAttempts: v => number(v, 1, 20),
+    rateLimitWindowMinutes: v => number(v, 1, 60),
   }));
   add('tickets', pick(body.tickets, {
     enabled: bool, categoryId: id, supportRoleId: id, logChannelId: id, panelChannelId: id,

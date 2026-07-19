@@ -1,6 +1,6 @@
 # FenixExelent Security 3.2
 
-Bot Discord z panelem WWW, ochroną AntiSpam/AntiRaid/AntiScam/AntiAlt, OCR obrazów, weryfikacją, ticketami, backupami, odwołaniami i moderacją.
+Bot Discord z panelem WWW, ochroną AntiSpam/AntiRaid/AntiScam/AntiAlt, OCR obrazów, modułowym Fenix Secure Verification v4, ticketami, backupami, odwołaniami i moderacją.
 
 ## Wymagania
 
@@ -13,7 +13,7 @@ Bez `DATABASE_URL` bot automatycznie zapisuje dane w `data/config.json`. W produ
 ## Instalacja
 
 1. Skopiuj `.env.example` jako `.env`.
-2. Uzupełnij co najmniej `BOT_TOKEN`, `CLIENT_ID`, `CLIENT_SECRET`, `SESSION_SECRET`, `DASHBOARD_URL` i `REDIRECT_URI`.
+2. Uzupełnij co najmniej `BOT_TOKEN`, `CLIENT_ID`, `CLIENT_SECRET`, `SESSION_SECRET`, `DASHBOARD_URL`, `REDIRECT_URI`, `VERIFICATION_REDIRECT_URI`, `TURNSTILE_SITE_KEY` i `TURNSTILE_SECRET_KEY`.
 3. Zainstaluj zależności i sprawdź paczkę:
 
 ```bash
@@ -43,6 +43,14 @@ W Discord Developer Portal dodaj adres przekierowania identyczny z `REDIRECT_URI
 https://twoja-domena.example/callback
 ```
 
+Dodaj także osobny adres callbacku weryfikacji identyczny z `VERIFICATION_REDIRECT_URI`:
+
+```text
+https://twoja-domena.example/verification/callback
+```
+
+W Cloudflare Turnstile utwórz widget dla publicznej domeny bota, a site key i secret key umieść wyłącznie w zmiennych środowiskowych. W produkcji używaj HTTPS. Sekret Turnstile nigdy nie trafia do przeglądarki.
+
 Panel jest dostępny pod `/dashboard.html`. Logowanie wymaga konta z uprawnieniem Administrator na wybranym serwerze.
 
 ## Bezpieczeństwo komend
@@ -68,7 +76,7 @@ Panel obsługuje:
 - AntiAlt i punkty ryzyka,
 - Reaction Roles oraz tworzenie panelu ról,
 - Channel Guard oraz wyjątki ról,
-- weryfikację i wysyłanie panelu Verify,
+- Fenix Secure Verification v4: metody pluginowe, Discord OAuth2, Cloudflare Turnstile, jednorazowe linki, limity prób, logi i wysyłanie panelu Verify,
 - tickety i wysyłanie panelu ticketów,
 - role administratora/moderatora i kanały logów,
 - Emergency Mode,
@@ -111,6 +119,22 @@ GET /ping
 ```
 
 Zwraca m.in. stan połączenia Discord i używany magazyn danych.
+
+## Fenix Secure Verification v4
+
+Standardowy przepływ na wszystkich serwerach:
+
+```text
+przycisk Discord → jednorazowy link → Cloudflare Turnstile
+→ Discord OAuth2 (scope identify) → porównanie ID użytkownika
+→ nadanie roli → usunięcie roli niezweryfikowanej → audyt i log Discord
+```
+
+Link domyślnie wygasa po 5 minutach i nie może zostać ponownie użyty. Token jest przechowywany w postaci skrótu. Limity użytkownika i połączenia można ustawić w dashboardzie.
+
+Na oficjalnym serwerze `SUPPORT_GUILD_ID` po etapie WWW wymagany jest dodatkowo istniejący wybór języka PL/EN/TR/DE/FR. Plugin językowy nie jest oferowany na innych serwerach.
+
+Szczegóły interfejsu pluginów znajdują się w `src/modules/verification/README.md`.
 
 ## Ważne
 

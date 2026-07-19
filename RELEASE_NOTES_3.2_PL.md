@@ -1,5 +1,18 @@
 # Najważniejsze naprawy 3.2
 
+## Aktualizacja: Fenix Secure Verification v4
+
+- zastąpiono natychmiastowe nadawanie roli bezpieczną weryfikacją WWW,
+- dodano Discord OAuth2 `identify` i kontrolę zgodności konta,
+- dodano obowiązkową walidację Cloudflare Turnstile po stronie serwera,
+- dodano hashowane, jednorazowe tokeny z czasem wygaśnięcia i jednorazowym OAuth2 `state`,
+- dodano limity prób użytkownika i adresu połączenia,
+- dodano audyt prób oraz opcjonalny kanał logów Discord,
+- dodano rejestr pluginów metod `web` i `language`,
+- zachowano języki PL/EN/TR/DE/FR wyłącznie dla oficjalnego serwera supportu jako drugi etap,
+- rozbudowano dashboard o metody, TTL, limity i kanał logów,
+- dodano test `npm run verification:check`.
+
 - Aktywny punkt startowy korzysta z najnowszego kodu w `src/application.js`.
 - Wszystkie 38 obsługiwanych komend jest wdrażanych z `src/commands.js`.
 - Dodano dwustopniową kontrolę uprawnień komend.

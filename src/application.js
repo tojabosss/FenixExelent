@@ -33,9 +33,11 @@ let dashboardHttpServer = null;
 const database = require('./services/database');
 const { defaultGuildConfig } = require('./config/defaultGuildConfig');
 const { startDashboardServer } = require('./dashboard/server');
+const { createVerificationManager } = require('./modules/verification');
 
 const LEGACY_CONFIG_PATH = path.join(__dirname, '..', 'config.json');
 let config = null;
+let verificationManager = null;
 
 async function initializeConfig() {
   config = await database.loadConfig({
@@ -3880,6 +3882,13 @@ async function handleSupportLanguageButton(interaction, gc) {
     return interaction.editReply({ content: '❌ Wybór języka jest aktualnie wyłączony.' });
   }
 
+  const languageReadiness = verificationManager?.languageReadiness(interaction.guild.id, interaction.user.id);
+  if (!languageReadiness?.ready) {
+    return interaction.editReply({
+      content: '🔐 Najpierw kliknij **Verify / Zweryfikuj się** i ukończ Discord OAuth2 oraz Cloudflare Turnstile. Potem wybierz język.',
+    });
+  }
+
   const languageCode = String(interaction.customId.split(':')[1] || '').toLowerCase();
   const language = getSupportLanguageDefinitions(gc).find(item => item.code === languageCode);
   if (!language) {
@@ -3944,6 +3953,11 @@ async function handleSupportLanguageButton(interaction, gc) {
   cfg.guildId = interaction.guild.id;
   cfg.verifyChannelId = interaction.channelId;
   await saveConfig().catch(error => logger.error({ err: error }, 'Support language config save failed'));
+  await verificationManager.completeLanguage({
+    guildId: interaction.guild.id,
+    userId: interaction.user.id,
+    languageCode: language.code,
+  }).catch(error => logger.error({ err: error, guildId: interaction.guild.id, userId: interaction.user.id }, 'Support language verification completion failed'));
 
   const languageChannel = channels.get(language.code);
   return interaction.editReply({
@@ -4109,74 +4123,30 @@ async function handleButton(interaction, gc) {
 
   // ── Verification Button ──
   if (interaction.customId === 'verify_btn') {
-    if (!gc.verification?.enabled) {
-      return interaction.reply({
-        content: '❌ Weryfikacja jest aktualnie wyłączona. Administrator musi użyć `/verification on`.',
-        flags: MessageFlags.Ephemeral,
-      });
-    }
-
-    const role = gc.verification.roleId
-      ? interaction.guild.roles.cache.get(gc.verification.roleId)
-      : null;
-
-    if (!role) {
-      return interaction.reply({
-        content: '❌ Rola weryfikacji nie istnieje. Administrator musi użyć `/verification setup`.',
-        flags: MessageFlags.Ephemeral,
-      });
-    }
-
-    const botMember = interaction.guild.members.me || await interaction.guild.members.fetchMe().catch(() => null);
-    if (!botMember?.permissions.has(PermissionFlagsBits.ManageRoles)) {
-      return interaction.reply({
-        content: '❌ Bot nie ma uprawnienia **Zarządzanie rolami**.',
-        flags: MessageFlags.Ephemeral,
-      });
-    }
-
-    if (botMember.roles.highest.comparePositionTo(role) <= 0) {
-      return interaction.reply({
-        content: `❌ Rola bota musi być wyżej niż ${role}. Poproś administratora o poprawienie kolejności ról.`,
-        flags: MessageFlags.Ephemeral,
-      });
-    }
-
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     try {
-      const member = await interaction.guild.members.fetch(interaction.user.id);
-
-      if (member.roles.cache.has(role.id)) {
-        if (gc.verification.unverifiedRoleId) {
-          await member.roles.remove(gc.verification.unverifiedRoleId).catch(() => {});
-        }
-        return interaction.reply({
-          content: '✅ Jesteś już zweryfikowany/a!',
-          flags: MessageFlags.Ephemeral,
-        });
-      }
-
-      await member.roles.add(role, 'FenixExelent: weryfikacja przyciskiem');
-
-      if (gc.verification.unverifiedRoleId) {
-        await member.roles.remove(
-          gc.verification.unverifiedRoleId,
-          'FenixExelent: użytkownik zweryfikowany'
-        ).catch(() => {});
-      }
-
-      return interaction.reply({
-        embeds: [embed(
-          '#2ed573',
-          '✅ Zweryfikowano!',
-          `Witaj na **${interaction.guild.name}**! Masz teraz pełny dostęp do serwera. 🔥`
-        )],
-        flags: MessageFlags.Ephemeral,
+      if (!verificationManager) throw new Error('Verification manager is not initialized');
+      const result = await verificationManager.startSession({
+        guildId: interaction.guild.id,
+        userId: interaction.user.id,
       });
-    } catch (err) {
-      logger.error('Verify error:', err);
-      return interaction.reply({
-        content: `❌ Nie udało się nadać roli. Sprawdź uprawnienia i kolejność ról bota. (${err.code || 'unknown'})`,
-        flags: MessageFlags.Ephemeral,
+      if (result.alreadyVerified) {
+        return interaction.editReply({ content: '✅ Jesteś już zweryfikowany/a.' });
+      }
+      const linkRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setLabel('Otwórz bezpieczną weryfikację WWW')
+          .setStyle(ButtonStyle.Link)
+          .setURL(result.url)
+      );
+      return interaction.editReply({
+        content: `🔐 Link jest jednorazowy i wygaśnie <t:${Math.floor(Date.parse(result.expiresAt) / 1000)}:R>. Nie udostępniaj go innym osobom.`,
+        components: [linkRow],
+      });
+    } catch (error) {
+      logger.warn({ code: error.code || 'unknown', guildId: interaction.guild.id, userId: interaction.user.id }, 'Verification session start failed');
+      return interaction.editReply({
+        content: error.code ? `❌ ${error.message}` : '❌ Nie udało się rozpocząć bezpiecznej weryfikacji. Spróbuj ponownie później.',
       });
     }
   }
@@ -4290,6 +4260,7 @@ async function handleButton(interaction, gc) {
 async function gracefulShutdown(signal) {
   logger.info(`Received ${signal}, shutting down...`);
   try { client.destroy(); } catch {}
+  try { verificationManager?.close(); } catch {}
   if (dashboardHttpServer) {
     await new Promise(resolve => dashboardHttpServer.close(() => resolve())).catch(() => {});
   }
@@ -4317,8 +4288,18 @@ async function bootstrap() {
   const BOT_TOKEN = String(process.env.BOT_TOKEN || '').trim();
   if (!dashboardOnly && !BOT_TOKEN) throw new Error('Brak BOT_TOKEN w pliku .env!');
 
+  verificationManager = createVerificationManager({
+    client,
+    getGuildConfig,
+    database,
+    logger,
+    baseUrl: config.dashboardUrl,
+    isOfficialSupportGuild,
+  });
+
   dashboardHttpServer = await startDashboardServer({
     client, config, database, logger, getGuildConfig, saveConfig,
+    verificationManager,
     sendVerifyPanel, sendTicketPanel, enableEmergencyMode, disableEmergencyMode,
     createServerBackup, restoreServerBackup, updateStats, calculateServerSecurityScore,
     aggregateSecurityStats, formatUptime, sendModLog, policyHtml, createReactionRolesPanelForChannel,

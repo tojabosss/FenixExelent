@@ -61,6 +61,10 @@ async function main() {
   assert.strictEqual(stats.ping, null);
   assert(Number.isFinite(stats.uptime));
   assert(!Number.isNaN(Date.parse(stats.generatedAt)));
+  const invalidVerification = await fetch(`http://127.0.0.1:${port}/verify/invalid-token`);
+  assert.strictEqual(invalidVerification.status, 404);
+  assert((await invalidVerification.text()).includes('Fenix Secure Verification v4'));
+  assert(invalidVerification.headers.get('cache-control').includes('no-store'));
   console.log('OK: aplikacja, /ping, dashboard i API statystyk.');
 }
 
