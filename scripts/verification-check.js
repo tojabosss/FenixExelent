@@ -101,7 +101,7 @@ async function main() {
   const manager = new VerificationManager({
     client: { guilds },
     getGuildConfig: () => config,
-    database: { async writeAudit(event) { auditEvents.push(event); } },
+    database: { databaseType: 'postgresql', async writeAudit(event) { auditEvents.push(event); } },
     logger: { warn() {} },
     baseUrl: 'https://verify.example',
     isOfficialSupportGuild: () => false,
@@ -109,6 +109,10 @@ async function main() {
     rateLimiter: new RateLimiter(),
     plugins,
   });
+
+  assert.deepStrictEqual(manager.environmentReadiness().missing, []);
+  assert.strictEqual(manager.readiness(guild.id).ready, true);
+  assert.strictEqual(manager.readiness(guild.id).officialSupportGuild, false);
 
   const started = await manager.startSession({ guildId: guild.id, userId: '222222222222222222' });
   const token = new URL(started.url).pathname.split('/').pop();

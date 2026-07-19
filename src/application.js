@@ -1294,6 +1294,8 @@ client.once('clientReady', async () => {
 
 client.on('guildCreate', async (guild) => {
   logger.info(`✅ Bot dodany na serwer: ${guild.name} (${guild.id})`);
+  getGuildConfig(guild.id);
+  await saveConfig().catch(error => logger.error({ err: error, guildId: guild.id }, 'New guild configuration save failed'));
   updateBotPresence();
   await updateStats(guild).catch(() => {});
 
@@ -1307,8 +1309,9 @@ client.on('guildCreate', async (guild) => {
         '1. Użyj `/setup`\n' +
         '2. Ustaw `/modlog` oraz `/antiscam log`\n' +
         '3. Włącz `/antiscam on`, `/ocrscan on`, `/antialt on`\n' +
-        '4. Sprawdź `/servercheck`\n' +
-        '5. Otwórz dashboard: ' + config.dashboardUrl + '\n\n' +
+        '4. Uruchom weryfikację: `/verification setup`\n' +
+        '5. Sprawdź `/servercheck`\n' +
+        '6. Otwórz dashboard: ' + config.dashboardUrl + '\n\n' +
         'W razie raidu użyj `/emergency on`.'
       )] }).catch(() => {});
     }
@@ -4296,6 +4299,11 @@ async function bootstrap() {
     baseUrl: config.dashboardUrl,
     isOfficialSupportGuild,
   });
+
+  const verificationEnvironment = verificationManager.environmentReadiness();
+  if (!verificationEnvironment.ready || !verificationEnvironment.persistentStorage) {
+    logger.warn({ missing: verificationEnvironment.missing }, 'Fenix Secure Verification requires additional production configuration');
+  }
 
   dashboardHttpServer = await startDashboardServer({
     client, config, database, logger, getGuildConfig, saveConfig,

@@ -28,6 +28,46 @@ class VerificationManager {
     return this.plugins.list({ officialGuild: Boolean(guild && this.isOfficialSupportGuild(guild)) });
   }
 
+  environmentReadiness() {
+    const web = this.plugins.get('web');
+    const configuration = web.configuration();
+    const persistentStorage = this.database.databaseType === 'postgresql';
+    const missing = [];
+    if (!configuration.oauthConfigured) missing.push('discord_oauth');
+    if (!configuration.turnstileConfigured) missing.push('cloudflare_turnstile');
+    if (!persistentStorage) missing.push('persistent_database');
+    return {
+      oauthConfigured: configuration.oauthConfigured,
+      turnstileConfigured: configuration.turnstileConfigured,
+      persistentStorage,
+      ready: configuration.oauthConfigured && configuration.turnstileConfigured,
+      missing,
+    };
+  }
+
+  readiness(guildId) {
+    const guild = this.client.guilds.cache.get(String(guildId));
+    const gc = guild ? this.getGuildConfig(guild.id) : null;
+    const environment = this.environmentReadiness();
+    const enabled = Boolean(gc?.verification?.enabled);
+    const roleConfigured = Boolean(gc?.verification?.roleId);
+    const channelConfigured = Boolean(gc?.verification?.channelId);
+    const issues = [...environment.missing];
+    if (!enabled) issues.push('verification_disabled');
+    if (!roleConfigured) issues.push('verified_role_missing');
+    if (!channelConfigured) issues.push('panel_channel_missing');
+    return {
+      ...environment,
+      guildAvailable: Boolean(guild),
+      officialSupportGuild: Boolean(guild && this.isOfficialSupportGuild(guild)),
+      enabled,
+      roleConfigured,
+      channelConfigured,
+      ready: Boolean(guild && enabled && roleConfigured && environment.ready),
+      issues,
+    };
+  }
+
   resolveMethods(guild, gc) {
     const configured = Array.isArray(gc.verification?.methods) ? gc.verification.methods : ['web'];
     const available = new Set(this.plugins.list({ officialGuild: this.isOfficialSupportGuild(guild) }).map(item => item.id));

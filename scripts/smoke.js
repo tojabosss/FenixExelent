@@ -44,6 +44,7 @@ async function main() {
   const ping = await waitForServer();
   assert.strictEqual(ping.ok, true);
   assert.strictEqual(ping.storage, 'json-file');
+  assert.deepStrictEqual(ping.verification.missing.sort(), ['cloudflare_turnstile', 'discord_oauth', 'persistent_database']);
   const dashboard = await (await fetch(`http://127.0.0.1:${port}/dashboard.html`)).text();
   assert(dashboard.includes('AntiScam i OCR'));
   assert(dashboard.includes('Centrum bezpieczeństwa'));

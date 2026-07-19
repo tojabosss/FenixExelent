@@ -6,6 +6,7 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 const { getCommandBuilders } = require('../src/commands');
 const { defaultGuildConfig } = require('../src/config/defaultGuildConfig');
+const { getCommandTargetGuildId } = require('../deploy-commands');
 
 const root = path.join(__dirname, '..');
 const ignored = new Set(['node_modules', 'data', '.git', 'backups', '_archive']);
@@ -30,6 +31,8 @@ const builders = getCommandBuilders();
 const commands = builders.map(builder => builder.toJSON());
 const commandNames = commands.map(command => command.name);
 assert.strictEqual(new Set(commandNames).size, commandNames.length, 'Command names must be unique');
+assert.strictEqual(getCommandTargetGuildId([]), '', 'Default command deployment must be global');
+assert.strictEqual(getCommandTargetGuildId(['--guild=123456789012345678']), '123456789012345678', 'Explicit guild deployment is broken');
 
 const applicationSource = fs.readFileSync(path.join(root, 'src', 'application.js'), 'utf8');
 const supportLanguages = defaultGuildConfig().supportLanguages;
@@ -111,6 +114,8 @@ for (const feature of ['AntiSpam', 'AntiRaid', 'AntiScam i OCR', 'AntiAlt', 'Rea
 for (const id of ['vfMethods', 'vfLog', 'vfTtl', 'vfAttempts', 'vfRateWindow']) {
   assert(dashboard.includes(`id="${id}"`), `Dashboard is missing verification field ${id}`);
 }
+assert(dashboard.includes('Brak kluczy Cloudflare Turnstile na hostingu.'), 'Dashboard must explain missing Turnstile configuration');
+assert(dashboard.includes('ustawienia znikną po restarcie hostingu'), 'Dashboard must warn about ephemeral storage');
 
 const envExample = fs.readFileSync(path.join(root, '.env.example'), 'utf8');
 for (const key of ['TURNSTILE_SITE_KEY', 'TURNSTILE_SECRET_KEY', 'VERIFICATION_REDIRECT_URI']) {

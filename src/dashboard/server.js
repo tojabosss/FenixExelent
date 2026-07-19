@@ -48,6 +48,24 @@ function safeReason(value) {
   return String(value || 'Brak powodu').trim().slice(0, 500) || 'Brak powodu';
 }
 
+function configSaveErrorResponse(error) {
+  const code = String(error?.code || '');
+  if (error instanceof TypeError) return { status: 400, message: 'Nieprawidłowe dane formularza' };
+  if (['50001', '50013'].includes(code)) {
+    return { status: 403, message: 'Bot nie ma dostępu lub wymaganych uprawnień do wybranego kanału albo roli' };
+  }
+  if (['10003', '10011'].includes(code)) {
+    return { status: 400, message: 'Wybrany kanał albo rola już nie istnieje. Odśwież panel i wybierz ponownie' };
+  }
+  if (['EACCES', 'EPERM', 'EROFS', 'ENOSPC'].includes(code)) {
+    return { status: 503, message: 'Hosting nie może zapisać konfiguracji. Skonfiguruj trwałą bazę danych DATABASE_URL' };
+  }
+  if (['ECONNREFUSED', 'ETIMEDOUT', 'ENOTFOUND', '57P01'].includes(code)) {
+    return { status: 503, message: 'Trwała baza danych jest chwilowo niedostępna' };
+  }
+  return { status: 500, message: 'Nie udało się zapisać ustawień' };
+}
+
 async function startDashboardServer(options) {
   const {
     client, config, database, logger, getGuildConfig, saveConfig,
@@ -210,7 +228,10 @@ async function startDashboardServer(options) {
   app.get('/api/config/:guildId', requireAuth, requireGuildAdmin, (req, res) => res.json(getGuildConfig(req.params.guildId)));
 
   app.get('/api/verification/methods/:guildId', requireAuth, requireGuildAdmin, (req, res) => {
-    res.json({ methods: verificationManager.listMethods(req.params.guildId) });
+    res.json({
+      methods: verificationManager.listMethods(req.params.guildId),
+      readiness: verificationManager.readiness(req.params.guildId),
+    });
   });
 
   app.post('/api/config/:guildId', requireAuth, requireGuildAdmin, async (req, res) => {
@@ -277,8 +298,8 @@ async function startDashboardServer(options) {
       res.json({ success: true, config: gc, actionResults });
     } catch (error) {
       logger.error(`Dashboard config save error (${guildId}):`, error);
-      const status = error instanceof TypeError ? 400 : 500;
-      res.status(status).json({ error: status === 400 ? 'Nieprawidłowe dane formularza' : 'Nie udało się zapisać ustawień', details: process.env.NODE_ENV === 'production' ? undefined : error.message });
+      const response = configSaveErrorResponse(error);
+      res.status(response.status).json({ error: response.message, details: process.env.NODE_ENV === 'production' ? undefined : error.message });
     }
   });
 
@@ -384,7 +405,13 @@ async function startDashboardServer(options) {
     const stats = liveStatsPayload();
     res.json({ name: client.user?.username || 'FenixExelentSecurity', ...stats, uptimeText: formatUptime(stats.uptime) });
   });
-  app.get('/ping', (req, res) => res.json({ ok: true, discordReady: client.isReady(), storage: database.databaseType, uptime: Math.floor(process.uptime()) }));
+  app.get('/ping', (req, res) => res.json({
+    ok: true,
+    discordReady: client.isReady(),
+    storage: database.databaseType,
+    verification: verificationManager.environmentReadiness(),
+    uptime: Math.floor(process.uptime()),
+  }));
 
   return new Promise((resolve, reject) => {
     const server = app.listen(config.dashboardPort, () => {

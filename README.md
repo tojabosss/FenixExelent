@@ -34,6 +34,7 @@ npm start
 ```
 
 Po każdej zmianie definicji komend uruchom ponownie `npm run deploy`.
+Polecenie wdraża komendy globalnie dla wszystkich serwerów i celowo ignoruje stare `GUILD_ID`. Wdrożenie testowe tylko na jednym serwerze wymaga jawnego `npm run deploy -- --guild=ID_SERWERA`.
 
 ## Konfiguracja Discord OAuth2
 
@@ -102,7 +103,9 @@ Build Command: npm install
 Start Command: npm start
 ```
 
-Ustaw `NODE_ENV=production`, bezpieczny `SESSION_SECRET` (minimum 32 znaki) oraz publiczne adresy HTTPS w `DASHBOARD_URL` i `REDIRECT_URI`.
+Ustaw `NODE_ENV=production`, bezpieczny `SESSION_SECRET` (minimum 32 znaki), publiczne adresy HTTPS w `DASHBOARD_URL`, `REDIRECT_URI` i `VERIFICATION_REDIRECT_URI`, klucze `TURNSTILE_SITE_KEY` i `TURNSTILE_SECRET_KEY` oraz `DATABASE_URL` do PostgreSQL.
+
+Na Renderze lokalny `json-file` nie jest trwałym magazynem. Bez `DATABASE_URL` konfiguracja serwerów, w tym włączona weryfikacja i wybrane role, może zniknąć po restarcie lub wdrożeniu.
 
 ## Kontrola działania
 
