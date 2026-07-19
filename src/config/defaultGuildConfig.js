@@ -104,7 +104,7 @@ verification: {
   unverifiedRoleId: null,
   channelId: null,
   logChannelId: null,
-  methods: ['web'],
+  methods: ['discord'],
   sessionTtlMinutes: 5,
   maxAttempts: 5,
   rateLimitWindowMinutes: 10,

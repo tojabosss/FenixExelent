@@ -12,7 +12,12 @@ class PluginRegistry {
     if (typeof plugin.label !== 'string' || !plugin.label.trim()) throw new TypeError(`Verification plugin ${plugin.id} has no label`);
     if (typeof plugin.validate !== 'function') throw new TypeError(`Verification plugin ${plugin.id} has no validate function`);
     if (this.plugins.has(plugin.id)) throw new Error(`Verification plugin already registered: ${plugin.id}`);
-    this.plugins.set(plugin.id, Object.freeze({ version: '1.0.0', officialOnly: false, ...plugin }));
+    this.plugins.set(plugin.id, Object.freeze({
+      version: '1.0.0',
+      officialOnly: false,
+      nonOfficialOnly: false,
+      ...plugin,
+    }));
     return plugin;
   }
 
@@ -27,12 +32,14 @@ class PluginRegistry {
   list({ officialGuild = false } = {}) {
     return [...this.plugins.values()]
       .filter(plugin => !plugin.officialOnly || officialGuild)
+      .filter(plugin => !plugin.nonOfficialOnly || !officialGuild)
       .map(plugin => ({
         id: plugin.id,
         label: plugin.label,
         description: plugin.description || '',
         version: plugin.version,
         officialOnly: Boolean(plugin.officialOnly),
+        nonOfficialOnly: Boolean(plugin.nonOfficialOnly),
         configurable: plugin.configurable !== false,
       }));
   }

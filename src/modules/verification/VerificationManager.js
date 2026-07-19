@@ -49,37 +49,33 @@ class VerificationManager {
     const guild = this.client.guilds.cache.get(String(guildId));
     const gc = guild ? this.getGuildConfig(guild.id) : null;
     const environment = this.environmentReadiness();
+    const officialSupportGuild = Boolean(guild && this.isOfficialSupportGuild(guild));
     const enabled = Boolean(gc?.verification?.enabled);
     const roleConfigured = Boolean(gc?.verification?.roleId);
     const channelConfigured = Boolean(gc?.verification?.channelId);
-    const issues = [...environment.missing];
+    const issues = officialSupportGuild ? [...environment.missing] : [];
     if (!enabled) issues.push('verification_disabled');
     if (!roleConfigured) issues.push('verified_role_missing');
     if (!channelConfigured) issues.push('panel_channel_missing');
     return {
       ...environment,
       guildAvailable: Boolean(guild),
-      officialSupportGuild: Boolean(guild && this.isOfficialSupportGuild(guild)),
+      officialSupportGuild,
+      mode: officialSupportGuild ? 'web' : 'discord',
+      methods: guild ? this.resolveMethods(guild, gc) : [],
       enabled,
       roleConfigured,
       channelConfigured,
-      ready: Boolean(guild && enabled && roleConfigured && environment.ready),
+      ready: Boolean(guild && enabled && roleConfigured && channelConfigured && (!officialSupportGuild || environment.ready)),
       issues,
     };
   }
 
   resolveMethods(guild, gc) {
-    const configured = Array.isArray(gc.verification?.methods) ? gc.verification.methods : ['web'];
-    const available = new Set(this.plugins.list({ officialGuild: this.isOfficialSupportGuild(guild) }).map(item => item.id));
-    const methods = configured.filter(method => available.has(method));
-    if (!methods.includes('web')) methods.unshift('web');
-    if (this.isOfficialSupportGuild(guild) && gc.supportLanguages?.enabled !== false) {
-      if (!methods.includes('language')) methods.push('language');
-    } else {
-      const languageIndex = methods.indexOf('language');
-      if (languageIndex >= 0) methods.splice(languageIndex, 1);
-    }
-    return [...new Set(methods)];
+    if (!this.isOfficialSupportGuild(guild)) return ['discord'];
+    const methods = ['web'];
+    if (gc.supportLanguages?.enabled !== false) methods.push('language');
+    return methods;
   }
 
   limits(gc) {
@@ -96,9 +92,12 @@ class VerificationManager {
     const gc = this.getGuildConfig(guild.id);
     if (!gc.verification?.enabled) throw new VerificationError('verification_disabled', 'Weryfikacja jest wyłączona na tym serwerze.', 409);
     if (!gc.verification.roleId) throw new VerificationError('role_not_configured', 'Administrator nie skonfigurował roli po weryfikacji.', 409);
+    const methods = this.resolveMethods(guild, gc);
+    if (!methods.includes('web')) {
+      throw new VerificationError('web_support_only', 'Weryfikacja WWW jest dostępna wyłącznie na oficjalnym serwerze supportu.', 409);
+    }
     if (!this.baseUrl) throw new VerificationError('base_url_missing', 'Publiczny adres dashboardu nie jest skonfigurowany.', 503);
 
-    const methods = this.resolveMethods(guild, gc);
     const member = await guild.members.fetch(String(userId)).catch(() => null);
     if (!member) throw new VerificationError('member_not_found', 'Nie znaleziono użytkownika na tym serwerze.', 404);
     if (member.roles.cache.has(gc.verification.roleId) && !methods.includes('language')) {
@@ -124,6 +123,57 @@ class VerificationManager {
       methods,
       guildName: guild.name,
     };
+  }
+
+  async completeDiscord({ guildId, userId }) {
+    const guild = this.client.guilds.cache.get(String(guildId));
+    if (!guild) throw new VerificationError('guild_not_found', 'Bot nie jest dostępny na tym serwerze.', 404);
+    if (this.isOfficialSupportGuild(guild)) {
+      throw new VerificationError('support_web_required', 'Na oficjalnym serwerze supportu użyj bezpiecznej weryfikacji WWW.', 409);
+    }
+
+    const gc = this.getGuildConfig(guild.id);
+    if (!gc.verification?.enabled) throw new VerificationError('verification_disabled', 'Weryfikacja jest wyłączona na tym serwerze.', 409);
+    if (!gc.verification.roleId) throw new VerificationError('role_not_configured', 'Administrator nie skonfigurował roli po weryfikacji.', 409);
+
+    const member = await guild.members.fetch(String(userId)).catch(() => null);
+    if (!member) throw new VerificationError('member_not_found', 'Nie znaleziono użytkownika na tym serwerze.', 404);
+    if (member.roles.cache.has(gc.verification.roleId)) {
+      if (gc.verification.unverifiedRoleId) await member.roles.remove(gc.verification.unverifiedRoleId).catch(() => {});
+      return { alreadyVerified: true, completed: true, guildName: guild.name };
+    }
+
+    const limits = this.limits(gc);
+    const rate = this.rateLimiter.consume(`user:${guild.id}:${userId}`, {
+      limit: limits.maxAttempts,
+      windowMs: limits.windowMs,
+    });
+    if (!rate.allowed) {
+      throw new VerificationError('rate_limited', `Za dużo prób. Spróbuj ponownie za ${Math.ceil(rate.retryAfterMs / 60_000)} min.`, 429);
+    }
+
+    const methods = this.resolveMethods(guild, gc);
+    const created = this.sessions.create({ guildId: guild.id, userId, methods, ttlMs: limits.ttlMs });
+    await this.audit(created.session, 'verification_started', { methods });
+
+    const plugin = this.plugins.get('discord');
+    const validation = await plugin.validate({
+      session: created.session,
+      officialGuild: false,
+      evidence: { interactionUserId: String(userId) },
+    });
+    if (!validation.ok) {
+      const activeSession = this.sessions.getByToken(created.token);
+      this.sessions.failByHash(activeSession.tokenHash, validation.code);
+      await this.audit(created.session, 'verification_discord_failed', { code: validation.code });
+      throw new VerificationError(validation.code, 'Nie udało się potwierdzić użytkownika Discord.', 403);
+    }
+
+    const activeSession = this.sessions.getByToken(created.token);
+    const updated = this.sessions.markMethodByHash(activeSession.tokenHash, 'discord');
+    await this.audit(updated, 'verification_discord_passed', {});
+    const result = await this.finalizeIfReady(activeSession.tokenHash);
+    return { alreadyVerified: false, guildName: guild.name, ...result };
   }
 
   sessionInfo(token) {

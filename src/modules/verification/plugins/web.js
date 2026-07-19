@@ -18,7 +18,8 @@ function createWebVerificationPlugin(options = {}) {
     label: 'Web Verification',
     description: 'Discord OAuth2 + Cloudflare Turnstile + jednorazowa sesja WWW.',
     version: '4.0.0',
-    configurable: true,
+    officialOnly: true,
+    configurable: false,
 
     configuration() {
       return {

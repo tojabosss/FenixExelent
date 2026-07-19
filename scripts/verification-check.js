@@ -8,6 +8,7 @@ const {
   VerificationManager,
 } = require('../src/modules/verification');
 const { createWebVerificationPlugin } = require('../src/modules/verification/plugins/web');
+const { discordVerificationPlugin } = require('../src/modules/verification/plugins/discord');
 const { languageVerificationPlugin } = require('../src/modules/verification/plugins/language');
 
 async function main() {
@@ -50,8 +51,9 @@ async function main() {
     expectedHostname: 'verify.example',
     http,
   }));
+  plugins.register(discordVerificationPlugin);
   plugins.register(languageVerificationPlugin);
-  assert.deepStrictEqual(plugins.list().map(item => item.id), ['web']);
+  assert.deepStrictEqual(plugins.list().map(item => item.id), ['discord']);
   assert.deepStrictEqual(plugins.list({ officialGuild: true }).map(item => item.id), ['web', 'language']);
 
   const rolesCache = new Map();
@@ -90,7 +92,8 @@ async function main() {
       enabled: true,
       roleId: verifiedRole.id,
       unverifiedRoleId: null,
-      methods: ['web'],
+      channelId: '444444444444444444',
+      methods: ['discord'],
       sessionTtlMinutes: 5,
       maxAttempts: 5,
       rateLimitWindowMinutes: 10,
@@ -111,21 +114,54 @@ async function main() {
   });
 
   assert.deepStrictEqual(manager.environmentReadiness().missing, []);
+  manager.environmentReadiness = () => ({
+    oauthConfigured: false,
+    turnstileConfigured: false,
+    persistentStorage: false,
+    ready: false,
+    missing: ['discord_oauth', 'cloudflare_turnstile', 'persistent_database'],
+  });
   assert.strictEqual(manager.readiness(guild.id).ready, true);
   assert.strictEqual(manager.readiness(guild.id).officialSupportGuild, false);
+  assert.deepStrictEqual(manager.readiness(guild.id).issues, []);
 
-  const started = await manager.startSession({ guildId: guild.id, userId: '222222222222222222' });
+  const directResult = await manager.completeDiscord({ guildId: guild.id, userId: '222222222222222222' });
+  assert.strictEqual(directResult.completed, true);
+  assert.strictEqual(memberRoleCache.has(verifiedRole.id), true);
+  assert(auditEvents.some(event => event.eventType === 'verification_discord_passed'));
+  await assert.rejects(
+    manager.startSession({ guildId: guild.id, userId: '222222222222222222' }),
+    error => error.code === 'web_support_only'
+  );
+  manager.close();
+
+  memberRoleCache.delete(verifiedRole.id);
+  config.verification.methods = ['web'];
+  const supportManager = new VerificationManager({
+    client: { guilds },
+    getGuildConfig: () => config,
+    database: { databaseType: 'postgresql', async writeAudit(event) { auditEvents.push(event); } },
+    logger: { warn() {} },
+    baseUrl: 'https://verify.example',
+    isOfficialSupportGuild: () => true,
+    sessions: new SessionManager(),
+    rateLimiter: new RateLimiter(),
+    plugins,
+  });
+
+  assert.strictEqual(supportManager.readiness(guild.id).mode, 'web');
+  const started = await supportManager.startSession({ guildId: guild.id, userId: '222222222222222222' });
   const token = new URL(started.url).pathname.split('/').pop();
-  await manager.verifyTurnstile(token, 'turnstile-response', '127.0.0.1');
-  const authorizationUrl = new URL(manager.beginOAuth(token));
-  const result = await manager.completeOAuth({ state: authorizationUrl.searchParams.get('state'), code: 'oauth-code' });
+  await supportManager.verifyTurnstile(token, 'turnstile-response', '127.0.0.1');
+  const authorizationUrl = new URL(supportManager.beginOAuth(token));
+  const result = await supportManager.completeOAuth({ state: authorizationUrl.searchParams.get('state'), code: 'oauth-code' });
   assert.strictEqual(result.completed, true);
   assert.strictEqual(memberRoleCache.has(verifiedRole.id), true);
   assert(auditEvents.some(event => event.eventType === 'verification_completed'));
-  assert.throws(() => manager.sessionInfo(token), error => error.code === 'used_token');
-  manager.close();
+  assert.throws(() => supportManager.sessionInfo(token), error => error.code === 'used_token');
+  supportManager.close();
 
-  console.log('OK: tokeny jednorazowe, rate limit, pluginy, Turnstile, OAuth2 i nadawanie roli.');
+  console.log('OK: Discord direct, support WWW, tokeny jednorazowe, rate limit, Turnstile, OAuth2 i role.');
 }
 
 main().catch(error => {

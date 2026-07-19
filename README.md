@@ -123,19 +123,18 @@ GET /ping
 
 Zwraca m.in. stan połączenia Discord i używany magazyn danych.
 
-## Fenix Secure Verification v4
+## Fenix Secure Verification v4.2
 
-Standardowy przepływ na wszystkich serwerach:
+Standardowy przepływ na serwerach, które dodały bota:
 
 ```text
-przycisk Discord → jednorazowy link → Cloudflare Turnstile
-→ Discord OAuth2 (scope identify) → porównanie ID użytkownika
+przycisk Discord → potwierdzenie użytkownika z interakcji
 → nadanie roli → usunięcie roli niezweryfikowanej → audyt i log Discord
 ```
 
-Link domyślnie wygasa po 5 minutach i nie może zostać ponownie użyty. Token jest przechowywany w postaci skrótu. Limity użytkownika i połączenia można ustawić w dashboardzie.
+Użytkownik nie opuszcza Discorda i nie musi logować się na stronie. Limit prób można ustawić w dashboardzie.
 
-Na oficjalnym serwerze `SUPPORT_GUILD_ID` po etapie WWW wymagany jest dodatkowo istniejący wybór języka PL/EN/TR/DE/FR. Plugin językowy nie jest oferowany na innych serwerach.
+Wyłącznie na oficjalnym serwerze `SUPPORT_GUILD_ID` pozostaje pełny przepływ WWW: jednorazowy link, Cloudflare Turnstile, Discord OAuth2 oraz dodatkowy wybór języka PL/EN/TR/DE/FR. Metoda WWW i plugin językowy nie są oferowane na innych serwerach.
 
 Szczegóły interfejsu pluginów znajdują się w `src/modules/verification/README.md`.
 

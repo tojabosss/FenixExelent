@@ -37,7 +37,7 @@ assert.strictEqual(getCommandTargetGuildId(['--guild=123456789012345678']), '123
 const applicationSource = fs.readFileSync(path.join(root, 'src', 'application.js'), 'utf8');
 const supportLanguages = defaultGuildConfig().supportLanguages;
 const verificationDefaults = defaultGuildConfig().verification;
-assert.deepStrictEqual(verificationDefaults.methods, ['web'], 'Web Verification must be enabled as the default method');
+assert.deepStrictEqual(verificationDefaults.methods, ['discord'], 'Discord Verification must be enabled as the default method');
 assert.strictEqual(verificationDefaults.sessionTtlMinutes, 5, 'Verification sessions must expire after five minutes by default');
 assert.strictEqual(verificationDefaults.maxAttempts, 5, 'Verification attempt limit is missing');
 assert(supportLanguages && typeof supportLanguages === 'object', 'Default config is missing supportLanguages');
@@ -56,11 +56,12 @@ assert(applicationSource.includes('.setCustomId(`supportlang:${language.code}`)'
 assert(applicationSource.includes("['Zweryfikowany', 'Verified', 'Członek', 'Member']"), 'Verified role recovery is missing');
 assert(applicationSource.includes('await member.roles.set([...finalRoleIds]'), 'Support language roles must be updated atomically');
 assert(applicationSource.includes('verificationManager.startSession({'), 'Verify button does not start a secure web session');
-assert(!applicationSource.includes('FenixExelent: weryfikacja przyciskiem'), 'Legacy one-click role assignment is still present');
+assert(applicationSource.includes('verificationManager.completeDiscord({'), 'Verify button does not support direct Discord verification');
+assert(applicationSource.includes('isOfficialSupportGuild(interaction.guild)'), 'Verify button does not separate support and public guilds');
 assert(applicationSource.includes('verificationManager.completeLanguage({'), 'Official language verification is not connected to the v4 flow');
 
 const verificationRoot = path.join(root, 'src', 'modules', 'verification');
-for (const relativePath of ['SessionManager.js', 'RateLimiter.js', 'PluginRegistry.js', 'VerificationManager.js', 'routes.js', 'plugins/web.js', 'plugins/language.js']) {
+for (const relativePath of ['SessionManager.js', 'RateLimiter.js', 'PluginRegistry.js', 'VerificationManager.js', 'routes.js', 'plugins/web.js', 'plugins/discord.js', 'plugins/language.js']) {
   assert(fs.existsSync(path.join(verificationRoot, relativePath)), `Verification v4 file is missing: ${relativePath}`);
 }
 

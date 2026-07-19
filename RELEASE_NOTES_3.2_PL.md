@@ -1,5 +1,14 @@
 # Najważniejsze naprawy 3.2
 
+## Aktualizacja: Fenix Secure Verification v4.2
+
+- na wszystkich zwykłych serwerach weryfikacja odbywa się bezpośrednio po kliknięciu przycisku Discord,
+- użytkownik nie jest przekierowywany na stronę i nie musi używać Discord OAuth2 ani Turnstile,
+- bezpieczna weryfikacja WWW pozostaje wyłącznie na `SUPPORT_GUILD_ID`,
+- oficjalny support nadal wymaga po etapie WWW wyboru języka PL/EN/TR/DE/FR,
+- polityka metod jest wymuszana po stronie bota i pokazana w dashboardzie,
+- zachowano limity prób, audyt, logi oraz bezpieczne nadawanie i usuwanie ról.
+
 ## Aktualizacja: Fenix Secure Verification v4
 
 - zastąpiono natychmiastowe nadawanie roli bezpieczną weryfikacją WWW,

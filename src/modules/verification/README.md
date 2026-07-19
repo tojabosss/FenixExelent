@@ -1,11 +1,14 @@
-# Fenix Secure Verification v4
+# Fenix Secure Verification v4.2
 
 Moduł odpowiada za bezpieczną weryfikację użytkowników Discord przez łańcuch niezależnych metod.
 
 ## Wbudowane metody
 
-- `web` — dostępna na wszystkich serwerach: jednorazowy link, Cloudflare Turnstile, Discord OAuth2 `identify` i kontrola ID konta.
+- `discord` — dostępna na wszystkich serwerach poza oficjalnym supportem: weryfikacja przyciskiem bez opuszczania Discorda.
+- `web` — dostępna wyłącznie na `SUPPORT_GUILD_ID`: jednorazowy link, Cloudflare Turnstile, Discord OAuth2 `identify` i kontrola ID konta.
 - `language` — dostępna wyłącznie na `SUPPORT_GUILD_ID`: wybór PL/EN/TR/DE/FR po ukończeniu metody `web`.
+
+Polityka metod jest wymuszana po stronie `VerificationManager`: zwykły serwer zawsze używa `discord`, a oficjalny support używa `web` oraz opcjonalnie `language`.
 
 ## Kontrakt pluginu
 
@@ -18,6 +21,7 @@ Plugin jest obiektem rejestrowanym w `PluginRegistry`:
   description: 'Krótki opis metody.',
   version: '1.0.0',
   officialOnly: false,
+  nonOfficialOnly: false,
   configurable: true,
   async validate({ session, evidence, officialGuild }) {
     return evidence.answer === evidence.expected
@@ -41,7 +45,7 @@ Identyfikator musi pasować do `^[a-z][a-z0-9_-]{0,31}$`. Plugin nie powinien sa
 
 ## Konfiguracja
 
-Wymagane zmienne środowiskowe:
+Zmienne środowiskowe wymagane dla weryfikacji WWW na oficjalnym supporcie:
 
 ```env
 CLIENT_ID=

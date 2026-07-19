@@ -3800,6 +3800,9 @@ async function sendVerifyPanel(channel) {
       .setStyle(ButtonStyle.Success)
   );
   const components = [verifyRow];
+  const methodDescription = isOfficialSupportGuild(channel.guild)
+    ? '\n\n🔐 Na tym serwerze przycisk otworzy bezpieczną weryfikację WWW.'
+    : '\n\n✅ Weryfikacja zostanie wykonana bezpośrednio na Discordzie — bez otwierania strony.';
   let extraDescription = '';
 
   if (isSupportLanguagePanel) {
@@ -3832,7 +3835,7 @@ Klikając przycisk, potwierdzasz akceptację zasad serwera.
 To access the server, click the button below.
 
 📜 Make sure you have read the rules.
-By clicking the button, you confirm that you accept the server rules.${extraDescription}`)
+By clicking the button, you confirm that you accept the server rules.${methodDescription}${extraDescription}`)
       .setFooter({ text: 'FenixExelent 🔥' })
       .setTimestamp()
     ],
@@ -4129,6 +4132,18 @@ async function handleButton(interaction, gc) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     try {
       if (!verificationManager) throw new Error('Verification manager is not initialized');
+      if (!isOfficialSupportGuild(interaction.guild)) {
+        const directResult = await verificationManager.completeDiscord({
+          guildId: interaction.guild.id,
+          userId: interaction.user.id,
+        });
+        return interaction.editReply({
+          content: directResult.alreadyVerified
+            ? '✅ Jesteś już zweryfikowany/a.'
+            : '✅ Weryfikacja zakończona. Rola została nadana bezpośrednio na Discordzie.',
+        });
+      }
+
       const result = await verificationManager.startSession({
         guildId: interaction.guild.id,
         userId: interaction.user.id,
@@ -4147,9 +4162,9 @@ async function handleButton(interaction, gc) {
         components: [linkRow],
       });
     } catch (error) {
-      logger.warn({ code: error.code || 'unknown', guildId: interaction.guild.id, userId: interaction.user.id }, 'Verification session start failed');
+      logger.warn({ code: error.code || 'unknown', guildId: interaction.guild.id, userId: interaction.user.id }, 'Verification button failed');
       return interaction.editReply({
-        content: error.code ? `❌ ${error.message}` : '❌ Nie udało się rozpocząć bezpiecznej weryfikacji. Spróbuj ponownie później.',
+        content: error.code ? `❌ ${error.message}` : '❌ Nie udało się ukończyć weryfikacji. Spróbuj ponownie później.',
       });
     }
   }
